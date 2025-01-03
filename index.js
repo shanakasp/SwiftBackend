@@ -30,6 +30,7 @@ app.use("/api/admin", require("./routes/adminRoutes"));
 app.use("/api/driver", require("./routes/driverRoutes"));
 app.use("/api/vehicle-owner", require("./routes/vehicleOwner"));
 app.use("/api/rider", require("./routes/riderRoutes"));
+app.use("/api/user", require("./routes/userRoutes"));
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

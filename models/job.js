@@ -26,6 +26,12 @@ const jobSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    applicants: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "JobApplicant",
+      },
+    ],
   },
   { timestamps: true }
 );

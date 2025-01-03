@@ -1,39 +1,22 @@
 const mongoose = require("mongoose");
 
-const jobSchema = new mongoose.Schema(
+const jobApplicantsSchema = new mongoose.Schema(
   {
-    jobTitle: {
+    coverLetter: {
       type: String,
       required: true,
     },
-    field: {
-      type: String,
+    uploadCV: {
+      public_id: String,
+      url: String,
+    },
+    job: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Job",
       required: true,
     },
-    location: {
-      type: String,
-      required: true,
-    },
-    type: {
-      type: String,
-      required: true,
-    },
-    description: {
-      type: String,
-      required: true,
-    },
-    requirements: {
-      type: String,
-      required: true,
-    },
-    applicants: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "JobApplicant",
-      },
-    ],
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Job", jobSchema);
+module.exports = mongoose.model("JobApplicant", jobApplicantsSchema);

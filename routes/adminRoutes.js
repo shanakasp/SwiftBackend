@@ -6,6 +6,8 @@ const Rider = require("../models/rider");
 const bcrypt = require("bcryptjs");
 const Admin = require("../models/admin");
 const Job = require("../models/job");
+const JobApplicant = require("../models/jobApplicants");
+const { uploadToCloudinary } = require("../utils/cloudinary");
 const cloudinary = require("cloudinary").v2;
 const auth = require("../middleware/auth");
 const { generateToken } = require("../utils/jwt");
@@ -173,6 +175,18 @@ router.get("/jobs", adminAuth, async (req, res) => {
   }
 });
 
+//Get All Locations of the Listed Jobs
+router.get("/jobs/locations", adminAuth, async (req, res) => {
+  try {
+    const locations = await Job.distinct("location");
+    res
+      .status(200)
+      .json({ message: "Job locations fetched successfully", locations });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
 // GET BY ID: Retrieve a job by its ID
 router.get("/jobs/:id", adminAuth, async (req, res) => {
   try {
@@ -264,4 +278,33 @@ router.delete("/jobs/:id", adminAuth, async (req, res) => {
   }
 });
 
+// Get Job Applicant Data
+
+router.get("/job-applicants", adminAuth, async (req, res) => {
+  try {
+    const applicants = await JobApplicant.find().populate("job");
+    res
+      .status(200)
+      .json({ message: "Job applicants fetched successfully", applicants });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+router.get("/job-applicants/:id", adminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const applicant = await JobApplicant.findById(id).populate("job");
+    if (!applicant) {
+      return res.status(404).json({ message: "Job applicant not found" });
+    }
+
+    res
+      .status(200)
+      .json({ message: "Job applicant fetched successfully", applicant });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
 module.exports = router;
