@@ -29,10 +29,12 @@ const applicantSecuritySchema = new mongoose.Schema(
 
 // Validate document count matches job requirement
 applicantSecuritySchema.pre("save", async function (next) {
-  const job = await mongoose.model("Job").findById(this.job);
-  if (this.documents.length !== job.requiredDocumentCount) {
+  const SecurityJob = await mongoose
+    .model("SecurityJob")
+    .findById(this.SecurityJob);
+  if (this.documents.length !== SecurityJob.requiredDocumentCount) {
     throw new Error(
-      `Exactly ${job.requiredDocumentCount} documents are required for this job`
+      `Exactly ${SecurityJob.requiredDocumentCount} documents are required for this job`
     );
   }
   next();

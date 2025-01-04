@@ -4,7 +4,10 @@ const upload = multer();
 const Job = require("../models/job");
 const JobApplicant = require("../models/jobApplicants");
 const { uploadToCloudinary } = require("../utils/cloudinary");
+const SecurityJob = require("../models/securityJob");
+const JobApplicantSecurity = require("../models/jobApplicantsSecurity");
 
+//Apply job
 router.post(
   "/jobs/:jobId/apply",
   upload.single("uploadCV"),
@@ -45,5 +48,75 @@ router.post(
     }
   }
 );
+
+// POST: Apply for a Security Job
+router.post("/apply/:jobId", upload.array("documents"), async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const files = req.files;
+    const documentNames = req.body.documentNames; // Array of document names matching the order of files
+
+    // Validate job exists
+    const job = await SecurityJob.findById(jobId);
+    if (!job) {
+      return res.status(404).json({ message: "Job not found" });
+    }
+
+    // Validate number of documents matches the requirement
+    if (files.length !== JobApplicant.requiredDocumentCount) {
+      return res.status(400).json({
+        message: `Exactly ${JobApplicant.requiredDocumentCount} documents are required for this job`,
+      });
+    }
+
+    // Validate document names match required documents
+    const requiredDocNames = JobApplicant.requiredDocuments.map(
+      (doc) => doc.documentName
+    );
+    if (!documentNames.every((name) => requiredDocNames.includes(name))) {
+      return res.status(400).json({
+        message: "Document names don't match the required documents",
+        required: requiredDocNames,
+      });
+    }
+
+    // Upload all files to Cloudinary
+    const uploadPromises = files.map(async (file, index) => {
+      // Pass only the buffer to uploadToCloudinary
+      const result = await uploadToCloudinary(file.buffer);
+      return {
+        documentName: documentNames[index],
+        public_id: result.public_id,
+        url: result.secure_url,
+      };
+    });
+
+    const uploadedDocuments = await Promise.all(uploadPromises);
+
+    // Create job application
+    const jobApplication = new JobApplicantSecurity({
+      documents: uploadedDocuments,
+      job: jobId,
+    });
+
+    // Save application
+    await jobApplication.save();
+
+    // Update job's applicants array
+    job.applicants.push(jobApplication._id);
+    await job.save();
+
+    res.status(201).json({
+      message: "Application submitted successfully",
+      application: jobApplication,
+    });
+  } catch (error) {
+    console.error("Error in job application:", error);
+    res.status(500).json({
+      message: "Error submitting application",
+      error: error.message,
+    });
+  }
+});
 
 module.exports = router;
