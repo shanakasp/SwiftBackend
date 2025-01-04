@@ -20,7 +20,7 @@ const applicantSecuritySchema = new mongoose.Schema(
     ],
     job: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Job",
+      ref: "SecurityJob",
       required: true,
     },
   },
@@ -29,15 +29,21 @@ const applicantSecuritySchema = new mongoose.Schema(
 
 // Validate document count matches job requirement
 applicantSecuritySchema.pre("save", async function (next) {
-  const SecurityJob = await mongoose
-    .model("SecurityJob")
-    .findById(this.SecurityJob);
-  if (this.documents.length !== SecurityJob.requiredDocumentCount) {
-    throw new Error(
-      `Exactly ${SecurityJob.requiredDocumentCount} documents are required for this job`
-    );
+  try {
+    const jobId = this.job; // Make sure we're using the correct field name
+    const SecurityJob = await mongoose.model("SecurityJob").findById(jobId);
+    if (!SecurityJob) {
+      throw new Error("Job not found");
+    }
+    if (this.documents.length !== SecurityJob.requiredDocumentCount) {
+      throw new Error(
+        `Exactly ${SecurityJob.requiredDocumentCount} documents are required for this job`
+      );
+    }
+    next();
+  } catch (error) {
+    next(error);
   }
-  next();
 });
 
 module.exports = mongoose.model(

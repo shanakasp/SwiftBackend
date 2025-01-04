@@ -11,6 +11,7 @@ const { uploadToCloudinary } = require("../utils/cloudinary");
 const cloudinary = require("cloudinary").v2;
 const auth = require("../middleware/auth");
 const { generateToken } = require("../utils/jwt");
+const JobApplicantSecurity = require("../models/jobApplicantsSecurity");
 
 router.post("/register", async (req, res) => {
   try {
@@ -307,4 +308,44 @@ router.get("/job-applicants/:id", adminAuth, async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 });
+
+//Security Job Routes
+// GET: Fetch all job security applications
+router.get("/applicants/security", adminAuth, async (req, res) => {
+  try {
+    const applications = await JobApplicantSecurity.find().populate("job");
+    res.status(200).json(applications);
+  } catch (error) {
+    console.error("Error fetching applications:", error);
+    res.status(500).json({
+      message: "Error fetching applications",
+      error: error.message,
+    });
+  }
+});
+
+// GET: Fetch a job security application by ID
+router.get(
+  "/applicants/security/:applicationId",
+  adminAuth,
+  async (req, res) => {
+    try {
+      const { applicationId } = req.params;
+      const application = await JobApplicantSecurity.findById(
+        applicationId
+      ).populate("job");
+      if (!application) {
+        return res.status(404).json({ message: "Application not found" });
+      }
+      res.status(200).json(application);
+    } catch (error) {
+      console.error("Error fetching application:", error);
+      res.status(500).json({
+        message: "Error fetching application",
+        error: error.message,
+      });
+    }
+  }
+);
+
 module.exports = router;
