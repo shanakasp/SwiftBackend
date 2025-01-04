@@ -31,6 +31,8 @@ app.use("/api/driver", require("./routes/driverRoutes"));
 app.use("/api/vehicle-owner", require("./routes/vehicleOwner"));
 app.use("/api/rider", require("./routes/riderRoutes"));
 app.use("/api/user", require("./routes/userRoutes"));
+app.use("/api/messages", require("./routes/messageRoutes"));
+app.use("/api/securityJobs", require("./routes/securityJobsRoutes"));
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
