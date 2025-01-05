@@ -79,9 +79,10 @@ const driverSchema = new mongoose.Schema(
       type: Boolean,
       required: true,
     },
+    drivingLicenseExpireDate: { type: String, default: "No date added" },
     consentDataProcessing: {
       type: Boolean,
-      required: true,
+      default: false,
     },
     adminVerified: {
       type: Boolean,

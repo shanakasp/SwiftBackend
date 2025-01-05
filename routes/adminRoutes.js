@@ -146,9 +146,20 @@ router.get("/user/:id", adminAuth, async (req, res) => {
 });
 
 // Keep existing endpoints for getting all users of each type
+// router.get("/users/drivers", adminAuth, async (req, res) => {
+//   const drivers = await Driver.find().select("-password");
+//   res.json(drivers);
+// });
+
 router.get("/users/drivers", adminAuth, async (req, res) => {
-  const drivers = await Driver.find().select("-password");
-  res.json(drivers);
+  try {
+    const drivers = await Driver.find()
+      .select("-password")
+      .sort({ drivingLicenseExpireDate: 1 }); // Sort by expire date in descending order
+    res.json(drivers);
+  } catch (error) {
+    res.status(500).send("Server Error");
+  }
 });
 
 router.get("/users/vehicle-owners", adminAuth, async (req, res) => {
@@ -718,4 +729,25 @@ router.get("/unverified-vehicleOwner", adminAuth, async (req, res) => {
   }
 });
 
+//Driver license expiry date change
+router.patch("/drivers/:id/license-expiry", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { drivingLicenseExpireDate } = req.body;
+    const updatedDriver = await Driver.findByIdAndUpdate(
+      id,
+      { drivingLicenseExpireDate },
+      { new: true }
+    );
+    if (!updatedDriver) {
+      return res.status(404).json({ message: "Driver not found" });
+    }
+    res.status(200).json({
+      message: "Driving license expiry date updated successfully",
+      driver: updatedDriver,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
 module.exports = router;
