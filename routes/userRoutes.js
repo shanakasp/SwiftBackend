@@ -6,7 +6,7 @@ const SecurityJob = require("../models/securityJob");
 const JobApplicantSecurity = require("../models/jobApplicantsSecurity");
 const Job = require("../models/job");
 const JobApplicant = require("../models/jobApplicants");
-
+const nodemailer = require("nodemailer");
 //Apply job
 router.post(
   "/jobs/:jobId/apply",
@@ -14,19 +14,18 @@ router.post(
   async (req, res) => {
     try {
       const { jobId } = req.params;
-      const { coverLetter } = req.body;
+      const { coverLetter, email } = req.body;
 
       const job = await Job.findById(jobId);
       if (!job) {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      // Upload CV to Cloudinary
       const cloudinaryResult = await uploadToCloudinary(req.file.buffer);
 
-      // Create new Job Applicant
       const applicant = new JobApplicant({
         coverLetter,
+        email,
         uploadCV: {
           public_id: cloudinaryResult.public_id,
           url: cloudinaryResult.secure_url,
@@ -36,9 +35,37 @@ router.post(
 
       await applicant.save();
 
-      // Link applicant to the job
       job.applicants.push(applicant._id);
       await job.save();
+
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: { user: "shanakaprince@gmail.com", pass: "xqlw xhyl vvem zhlk" },
+      });
+      const mailOptions = {
+        from: "Swift Admin Team",
+        to: email,
+        subject: "Swift: Job Application Received",
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+            <h1 style="color: #38a169;">Thank You for Applying!</h1>
+            <p>Dear Applicant,</p>
+            <p>We have received your application for the position at Swift.</p>
+           
+            <p>We will review your application and get back to you soon.</p>
+            <p>Best regards,</p>
+            <p><strong>Swift HR Team</strong></p>  <div style="text-align: center; color: #38a169;"> <p>South Africa's most innovative e-hailing service.</p> </div> <div style="text-align: center;"> </div> <div style="text-align: center; color: #d69e2e; margin-top: 20px;"> <p>© 2025 Swift! All rights reserved.</p> </div> </div> 
+          </div>
+        `,
+      };
+
+      transporter.sendMail(mailOptions, (error, info) => {
+        if (error) {
+          console.error("Email error:", error);
+        } else {
+          console.log("Email sent:", info.response);
+        }
+      });
 
       res
         .status(201)

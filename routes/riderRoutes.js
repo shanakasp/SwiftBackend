@@ -10,13 +10,11 @@ router.post("/register", upload.single("image"), async (req, res) => {
   try {
     const { username, email, password, mobileNo } = req.body;
     const existingRider = await Rider.findOne({
-      $or: [{ username }, { email }],
+      $or: [{ email }],
     });
 
     if (existingRider) {
-      return res
-        .status(400)
-        .json({ message: "Username or email already exists" });
+      return res.status(400).json({ message: "Email already exists" });
     }
 
     const cloudinaryResult = await uploadToCloudinary(req.file.buffer);

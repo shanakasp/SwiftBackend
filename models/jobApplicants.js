@@ -2,13 +2,22 @@ const mongoose = require("mongoose");
 
 const jobApplicantsSchema = new mongoose.Schema(
   {
-    coverLetter: {
+    email: {
       type: String,
       required: true,
     },
+    coverLetter: {
+      type: String,
+    },
     uploadCV: {
-      public_id: String,
-      url: String,
+      public_id: {
+        type: String,
+        required: true,
+      },
+      url: {
+        type: String,
+        required: true,
+      },
     },
     job: {
       type: mongoose.Schema.Types.ObjectId,

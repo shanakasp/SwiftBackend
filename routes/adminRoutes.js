@@ -4,6 +4,7 @@ const Driver = require("../models/driver");
 const VehicleOwner = require("../models/vehicleOwner");
 const Rider = require("../models/rider");
 const bcrypt = require("bcryptjs");
+const Message = require("../models/message");
 const Admin = require("../models/admin");
 const Job = require("../models/job");
 const JobApplicant = require("../models/jobApplicants");
@@ -34,6 +35,72 @@ router.post("/register", async (req, res) => {
   }
 });
 
+router.get("/admins", adminAuth, async (req, res) => {
+  try {
+    const admins = await Admin.find();
+    res.status(200).json(admins);
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+router.get("/admins/:id", adminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const admin = await Admin.findById(id);
+
+    if (!admin) {
+      return res.status(404).json({ message: "Admin not found" });
+    }
+
+    res.status(200).json(admin);
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+//Admin direct msg to userSelect:
+router.post("/admin/send-message", async (req, res) => {
+  try {
+    const { adminId, receiverId, title, category, message, receiverModel } =
+      req.body;
+
+    let receiver;
+    switch (receiverModel) {
+      case "Driver":
+        receiver = await Driver.findById(receiverId);
+        break;
+      case "Rider":
+        receiver = await Rider.findById(receiverId);
+        break;
+      case "Admin":
+        receiver = await Admin.findById(receiverId);
+        break;
+      default:
+        return res.status(400).json({ message: "Invalid receiver model" });
+    }
+
+    if (!receiver) {
+      return res.status(404).json({ message: "Receiver not found" });
+    }
+
+    const newMessage = new Message({
+      sender: { id: adminId, model: "Admin" },
+      receiver: { id: receiverId, model: receiverModel },
+      title,
+      category,
+      message,
+      isAdminMessage: true,
+    });
+
+    await newMessage.save();
+
+    res.status(201).json({ message: "Message sent successfully", newMessage });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
 router.post("/login", async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -49,7 +116,7 @@ router.post("/login", async (req, res) => {
     }
 
     const token = generateToken(admin);
-    res.json({ message: "Login successful", token });
+    res.json({ message: "Login successful", token, adminId: admin._id });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }

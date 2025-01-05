@@ -32,7 +32,7 @@ const messageSchema = new mongoose.Schema({
   },
   category: {
     type: String,
-    required: true,
+    // required: true,
   },
   message: {
     type: String,
