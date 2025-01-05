@@ -43,8 +43,8 @@ router.post("/register", upload.single("image"), async (req, res) => {
 
 router.post("/login", async (req, res) => {
   try {
-    const { username, password } = req.body;
-    const rider = await Rider.findOne({ username });
+    const { email, password } = req.body;
+    const rider = await Rider.findOne({ email });
 
     if (!rider) {
       return res.status(400).json({ message: "Rider not found" });

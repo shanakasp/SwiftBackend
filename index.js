@@ -25,12 +25,19 @@ mongoose
   .then(() => console.log("Connected to MongoDB"))
   .catch((err) => console.error("MongoDB connection error:", err));
 
-// Add these routes to your index.js
+// Request and Response Logging Middleware
+app.use((req, res, next) => {
+  console.log(`Incoming request: ${req.method} ${req.url}`);
+  next();
+});
+
 app.use("/api/admin", require("./routes/adminRoutes"));
 app.use("/api/driver", require("./routes/driverRoutes"));
 app.use("/api/vehicle-owner", require("./routes/vehicleOwner"));
 app.use("/api/rider", require("./routes/riderRoutes"));
 app.use("/api/user", require("./routes/userRoutes"));
+app.use("/api/messages", require("./routes/messageRoutes"));
+app.use("/api/securityJobs", require("./routes/securityJobsRoutes"));
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
