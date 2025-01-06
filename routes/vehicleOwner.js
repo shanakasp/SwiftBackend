@@ -598,53 +598,6 @@ router.get("/nominated-drivers/:id", auth, async (req, res) => {
   }
 });
 
-// DELETE: Delete a driver
-router.delete("/nominated-drivers/:id", auth, async (req, res) => {
-  try {
-    const driver = await NominateDriver.findOne({
-      _id: req.params.id,
-      nominatedBy: req.user.id,
-    });
-
-    if (!driver) {
-      return res.status(404).json({
-        success: false,
-        message: "Driver not found",
-      });
-    }
-
-    // Delete documents from Cloudinary
-    const deletePromises = [];
-    const documents = [
-      "driverLicense",
-      "prdp",
-      "policeClearance",
-      "proofOfAddress",
-    ];
-
-    for (const doc of documents) {
-      if (driver[doc]?.public_id) {
-        deletePromises.push(deleteFromCloudinary(driver[doc].public_id));
-      }
-    }
-
-    await Promise.all(deletePromises);
-
-    await driver.remove();
-
-    res.status(200).json({
-      success: true,
-      message: "Driver deleted successfully",
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error deleting driver",
-      error: error.message,
-    });
-  }
-});
-// PUT: Complete update of a driver
 router.put("/nominate-driver/:id", auth, uploadFields, async (req, res) => {
   try {
     const { id } = req.params;
@@ -823,6 +776,43 @@ router.patch("/nominate-driver/:id", auth, uploadFields, async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Server error",
+      error: error.message,
+    });
+  }
+});
+
+// DELETE: Delete a driver
+router.delete("/nominate-drivers/:id", auth, async (req, res) => {
+  try {
+    const driver = await NominateDriver.findByIdAndDelete({
+      _id: req.params.id,
+      nominatedBy: req.user.id,
+    });
+
+    if (!driver) {
+      return res.status(404).json({
+        success: false,
+        message: "Driver not found",
+      });
+    }
+
+    // Delete documents from Cloudinary
+    const deletePromises = [];
+    const documents = [
+      "driverLicense",
+      "prdp",
+      "policeClearance",
+      "proofOfAddress",
+    ];
+
+    res.status(200).json({
+      success: true,
+      message: "Driver deleted successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error deleting driver",
       error: error.message,
     });
   }

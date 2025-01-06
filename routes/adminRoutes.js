@@ -16,7 +16,7 @@ const { generateToken } = require("../utils/jwt");
 const JobApplicantSecurity = require("../models/jobApplicantsSecurity");
 const nodemailer = require("nodemailer");
 const crypto = require("crypto");
-
+const NominateDriver = require("../models/nominatedDriver");
 router.post("/register", async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -880,4 +880,67 @@ router.patch("/drivers/:id/license-expiry", async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 });
+
+router.patch(
+  "/verify-nominatedDriver/:driverId",
+  adminAuth,
+  async (req, res) => {
+    try {
+      const { driverId } = req.params;
+      const driver = await NominateDriver.findById(driverId);
+      if (!driver) {
+        return res.status(404).json({ message: "Driver not found" });
+      }
+      driver.adminVerified = true;
+      const generateRandomPassword = () => {
+        return crypto.randomBytes(8).toString("hex");
+      };
+      const randomPassword = generateRandomPassword();
+      if (!driver.password) {
+        const hashedPassword = await bcrypt.hash(randomPassword, 12);
+        driver.password = hashedPassword;
+      }
+      await driver.save();
+      const credentials = {
+        email: driver.email,
+        password: randomPassword,
+        fullName: driver.fullName,
+      };
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: { user: "shanakaprince@gmail.com", pass: "xqlw xhyl vvem zhlk" },
+      });
+      const mailOptions = {
+        from: "Swift Admin Team",
+        to: driver.email,
+        subject: "Swift Admin Team: Your Login Credentials",
+        html: `<div style="font-family: Arial, sans-serif; padding: 20px; color: #333;"> <div style="text-align: center;"></div> <h1 style="color: #38a169;">Proudly South African Ride-Sharing Platform</h1> <h2 style="color: #d69e2e;">Swift!</h2> <p>Hello <strong>${driver.fullName}</strong>,</p> <p>Your account has been verified by the Swift Admin Team. Please use the following credentials to log in:</p> <div style="border: 1px solid #38a169; padding: 10px; background-color: #f0f8ff;"> <p><strong>Email:</strong> ${credentials.email}</p> <p><strong>Password:</strong> ${credentials.password}</p> </div> <p>Please change your password after the first login.</p> <p>Thank you,</p> <p><strong>Swift Admin Team</strong></p> <div style="text-align: center; color: #38a169;"> <p>South Africa's most innovative e-hailing service.</p> </div> <div style="text-align: center;"></div> <div style="text-align: center; color: #d69e2e; margin-top: 20px;"> <p>© 2025 Swift! All rights reserved.</p> </div> </div>`,
+      };
+      transporter.sendMail(mailOptions, (error, info) => {
+        if (error) {
+          console.error("Email error:", error);
+        } else {
+          console.log("Email sent:", info.response);
+        }
+      });
+      res.json({
+        message: "Driver verified successfully",
+        driver: {
+          id: driver._id,
+          fullName: driver.fullName,
+          email: driver.email,
+          adminVerified: driver.adminVerified,
+        },
+        credentials: {
+          message: `Please send the following credentials to ${driver.fullName}:`,
+          loginDetails: `Email: ${credentials.email}\nPassword: ${credentials.password}\n\nPlease change your password after the first login.`,
+        },
+      });
+    } catch (error) {
+      console.error("Verification error:", error);
+      res.status(500).json({ message: "Server error", error: error.message });
+    }
+  }
+);
+
 module.exports = router;
