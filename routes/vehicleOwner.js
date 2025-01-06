@@ -6,12 +6,15 @@ const upload = require("../middleware/upload");
 const { uploadToCloudinary } = require("../utils/cloudinary");
 const { generateToken } = require("../utils/jwt");
 const auth = require("../middleware/auth");
+const mongoose = require("mongoose");
+const NominateDriver = require("../models/nominatedDriver");
 // Configure multer for multiple file uploads
 const uploadFields = upload.fields([
   { name: "driverLicense", maxCount: 1 },
   { name: "prdp", maxCount: 1 },
   { name: "policeClearance", maxCount: 1 },
   { name: "proofOfAddress", maxCount: 1 },
+  { name: "imageID", maxCount: 1 },
   { name: "registrationPapers", maxCount: 1 },
   { name: "insuranceCertificate", maxCount: 1 },
   { name: "roadworthyCertificate", maxCount: 1 },
@@ -24,6 +27,7 @@ router.post("/register", uploadFields, async (req, res) => {
       idPassportNumber,
       dateOfBirth,
       email,
+      proofOfAddress,
       phone,
       address,
       criminalRecordCheck,
@@ -46,6 +50,7 @@ router.post("/register", uploadFields, async (req, res) => {
     const ownerDocs = {
       driverLicense: files.driverLicense?.[0],
       prdp: files.prdp?.[0],
+      imageID: files.imageID?.[0],
       policeClearance: files.policeClearance?.[0],
       proofOfAddress: files.proofOfAddress?.[0],
     };
@@ -252,21 +257,33 @@ router.get("/getVehicles", auth, async (req, res) => {
 });
 
 // Get vehicle by ID (only if owned by authenticated user)
-router.get("/getVehicle/:id", auth, async (req, res) => {
+router.get("/getVehicle/:vehicleId", auth, async (req, res) => {
   try {
-    const { id } = req.params;
-    const vehicle = await Vehicle.findById(id).select("-password").lean();
+    const { vehicleId } = req.params; // Corrected line
+    const vehicle = await Vehicle.findById(vehicleId)
+      .select("-password")
+      .lean();
+
     if (!vehicle) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Vehicle not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle not found",
+      });
     }
-    res.status(200).json({ success: true, data: vehicle });
+
+    res.status(200).json({
+      success: true,
+      data: vehicle,
+    });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
   }
 });
+
 // Update vehicle by ID (PUT)
 router.put(
   "/updateVehicle/:id",
@@ -438,6 +455,373 @@ router.delete("/delete/:vehicleId", auth, async (req, res) => {
     res.json({ message: "Vehicle deleted successfully" });
   } catch (error) {
     res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
+  }
+});
+
+// POST: Register a new driver
+router.post("/nominate-driver", auth, uploadFields, async (req, res) => {
+  try {
+    const {
+      fullName,
+      idPassportNumber,
+      dateOfBirth,
+      email,
+      phone,
+      address,
+      drivingLicenseExpireDate,
+      vehicleIds,
+    } = req.body;
+
+    // Check if driver already exists
+    const existingDriver = await NominateDriver.findOne({ email });
+    if (existingDriver) {
+      return res.status(400).json({
+        message: "Driver with this email already exists",
+      });
+    }
+
+    // Handle file uploads to Cloudinary
+    const uploadPromises = [];
+    const files = req.files;
+
+    const driverDocs = {
+      driverLicense: files.driverLicense?.[0],
+      prdp: files.prdp?.[0],
+      policeClearance: files.policeClearance?.[0],
+      proofOfAddress: files.proofOfAddress?.[0],
+    };
+
+    for (const [key, file] of Object.entries(driverDocs)) {
+      if (file) {
+        uploadPromises.push(
+          uploadToCloudinary(file.buffer).then((result) => ({
+            field: key,
+            result,
+          }))
+        );
+      }
+    }
+
+    const uploadResults = await Promise.all(uploadPromises);
+
+    // Prepare driver data
+    const driverData = {
+      fullName,
+      idPassportNumber,
+      dateOfBirth: new Date(dateOfBirth),
+      email,
+      phone,
+      address,
+      drivingLicenseExpireDate,
+      nominatedBy: req.user.id, // From auth middleware
+      vehicleIds: vehicleIds ? vehicleIds.split(",") : [],
+    };
+
+    // Add uploaded document URLs to driver data
+    uploadResults.forEach(({ field, result }) => {
+      driverData[field] = {
+        public_id: result.public_id,
+        url: result.secure_url,
+      };
+    });
+
+    const driver = new NominateDriver(driverData);
+    await driver.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Driver nominated successfully",
+      driver: {
+        id: driver._id,
+        fullName: driver.fullName,
+        email: driver.email,
+      },
+    });
+  } catch (error) {
+    console.error("Driver nomination error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+});
+
+// GET: Get all drivers for the authenticated vehicle owner
+router.get("/nominated-drivers", auth, async (req, res) => {
+  try {
+    const drivers = await NominateDriver.find({
+      nominatedBy: req.user.id,
+    }).select("-password"); // Exclude password from response
+
+    res.status(200).json({
+      success: true,
+      count: drivers.length,
+      drivers,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching drivers",
+      error: error.message,
+    });
+  }
+});
+// GET: Get specific driver by ID
+router.get("/nominated-drivers/:id", auth, async (req, res) => {
+  try {
+    const driver = await NominateDriver.findOne({
+      _id: req.params.id,
+      nominatedBy: req.user.id,
+    }).select("-password");
+
+    if (!driver) {
+      return res.status(404).json({
+        success: false,
+        message: "Driver not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      driver,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching driver",
+      error: error.message,
+    });
+  }
+});
+
+// DELETE: Delete a driver
+router.delete("/nominated-drivers/:id", auth, async (req, res) => {
+  try {
+    const driver = await NominateDriver.findOne({
+      _id: req.params.id,
+      nominatedBy: req.user.id,
+    });
+
+    if (!driver) {
+      return res.status(404).json({
+        success: false,
+        message: "Driver not found",
+      });
+    }
+
+    // Delete documents from Cloudinary
+    const deletePromises = [];
+    const documents = [
+      "driverLicense",
+      "prdp",
+      "policeClearance",
+      "proofOfAddress",
+    ];
+
+    for (const doc of documents) {
+      if (driver[doc]?.public_id) {
+        deletePromises.push(deleteFromCloudinary(driver[doc].public_id));
+      }
+    }
+
+    await Promise.all(deletePromises);
+
+    await driver.remove();
+
+    res.status(200).json({
+      success: true,
+      message: "Driver deleted successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error deleting driver",
+      error: error.message,
+    });
+  }
+});
+// PUT: Complete update of a driver
+router.put("/nominate-driver/:id", auth, uploadFields, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const driver = await NominateDriver.findById(id);
+
+    if (!driver) {
+      return res.status(404).json({
+        message: "Driver not found",
+      });
+    }
+
+    // Check if the authenticated user is the one who created the driver
+    if (driver.nominatedBy.toString() !== req.user.id) {
+      return res.status(403).json({
+        message: "You are not authorized to edit this driver",
+      });
+    }
+
+    // Handle file uploads to Cloudinary
+    const uploadPromises = [];
+    const files = req.files;
+
+    const driverDocs = {
+      driverLicense: files.driverLicense?.[0],
+      prdp: files.prdp?.[0],
+      policeClearance: files.policeClearance?.[0],
+      proofOfAddress: files.proofOfAddress?.[0],
+    };
+
+    for (const [key, file] of Object.entries(driverDocs)) {
+      if (file) {
+        uploadPromises.push(
+          uploadToCloudinary(file.buffer).then((result) => ({
+            field: key,
+            result,
+          }))
+        );
+      }
+    }
+
+    const uploadResults = await Promise.all(uploadPromises);
+
+    // Prepare updated driver data
+    const updatedDriverData = {
+      fullName: req.body.fullName,
+      idPassportNumber: req.body.idPassportNumber,
+      dateOfBirth: new Date(req.body.dateOfBirth),
+      // email: req.body.email,
+      phone: req.body.phone,
+      address: req.body.address,
+      drivingLicenseExpireDate: req.body.drivingLicenseExpireDate,
+      nominatedBy: req.user.id,
+      vehicleIds: req.body.vehicleIds ? req.body.vehicleIds.split(",") : [],
+    };
+
+    // Add uploaded document URLs to updated driver data
+    uploadResults.forEach(({ field, result }) => {
+      updatedDriverData[field] = {
+        public_id: result.public_id,
+        url: result.secure_url,
+      };
+    });
+
+    const updatedDriver = await NominateDriver.findByIdAndUpdate(
+      id,
+      updatedDriverData,
+      {
+        new: true,
+      }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Driver updated successfully",
+      driver: {
+        id: updatedDriver._id,
+        fullName: updatedDriver.fullName,
+        email: updatedDriver.email,
+      },
+    });
+  } catch (error) {
+    console.error("Driver update error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+});
+
+router.patch("/nominate-driver/:id", auth, uploadFields, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const driver = await NominateDriver.findById(id);
+
+    if (!driver) {
+      return res.status(404).json({
+        message: "Driver not found",
+      });
+    }
+
+    // Check if the authenticated user is the one who created the driver
+    if (driver.nominatedBy.toString() !== req.user.id) {
+      return res.status(403).json({
+        message: "You are not authorized to edit this driver",
+      });
+    }
+
+    // Handle file uploads to Cloudinary
+    const uploadPromises = [];
+    const files = req.files;
+
+    const driverDocs = {
+      driverLicense: files.driverLicense?.[0],
+      prdp: files.prdp?.[0],
+      policeClearance: files.policeClearance?.[0],
+      proofOfAddress: files.proofOfAddress?.[0],
+    };
+
+    for (const [key, file] of Object.entries(driverDocs)) {
+      if (file) {
+        uploadPromises.push(
+          uploadToCloudinary(file.buffer).then((result) => ({
+            field: key,
+            result,
+          }))
+        );
+      }
+    }
+
+    const uploadResults = await Promise.all(uploadPromises);
+
+    // Prepare updates for driver data
+    const updates = {};
+    const allowedUpdates = [
+      "fullName",
+      "idPassportNumber",
+      "dateOfBirth",
+      // "email",
+      "phone",
+      "address",
+      "drivingLicenseExpireDate",
+      "vehicleIds",
+    ];
+
+    Object.keys(req.body).forEach((key) => {
+      if (allowedUpdates.includes(key)) {
+        updates[key] =
+          key === "dateOfBirth" ? new Date(req.body[key]) : req.body[key];
+      }
+    });
+
+    // Add uploaded document URLs to updates
+    uploadResults.forEach(({ field, result }) => {
+      updates[field] = {
+        public_id: result.public_id,
+        url: result.secure_url,
+      };
+    });
+
+    const updatedDriver = await NominateDriver.findByIdAndUpdate(id, updates, {
+      new: true,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Driver updated successfully",
+      driver: {
+        id: updatedDriver._id,
+        fullName: updatedDriver.fullName,
+        email: updatedDriver.email,
+      },
+    });
+  } catch (error) {
+    console.error("Driver update error:", error);
+    res.status(500).json({
+      success: false,
       message: "Server error",
       error: error.message,
     });

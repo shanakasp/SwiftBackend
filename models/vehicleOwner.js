@@ -28,8 +28,12 @@ const vehicleOwnerSchema = new mongoose.Schema(
       required: true,
     },
     proofOfAddress: {
-      public_id: String,
-      url: String,
+      public_id: { type: String, required: true },
+      url: { type: String, required: true },
+    },
+    imageID: {
+      public_id: { type: String, required: true },
+      url: { type: String, required: true },
     },
     criminalRecordCheck: {
       type: Boolean,
