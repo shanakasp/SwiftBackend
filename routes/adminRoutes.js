@@ -635,6 +635,91 @@ router.patch(
   }
 );
 
+// Get all vehicles
+router.get("/getAllVehicles", adminAuth, async (req, res) => {
+  try {
+    const vehicles = await Vehicle.find();
+    res.json({
+      success: true,
+      data: vehicles,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+});
+
+// Get vehicle by ID
+router.get("/getVehicle/:id", adminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const vehicle = await Vehicle.findById(id);
+
+    if (!vehicle) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: vehicle,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+});
+
+//Verify vehicle by id
+router.patch("/verify-vehicle/:vehicleId", adminAuth, async (req, res) => {
+  try {
+    const { vehicleId } = req.params;
+    const vehicle = await Vehicle.findById(vehicleId);
+    if (!vehicle) {
+      return res.status(404).json({ message: "Vehicle not found" });
+    }
+    vehicle.adminVerified = true;
+    await vehicle.save();
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: { user: "shanakaprince@gmail.com", pass: "xqlw xhyl vvem zhlk" },
+    });
+    const mailOptions = {
+      from: "Swift Admin Team",
+      to: vehicle.ownerEmail,
+      subject: "Swift Admin Team: Your Vehicle Verification",
+      html: `<div style="font-family: Arial, sans-serif; padding: 20px; color: #333;"> <div style="text-align: center;"></div> <h1 style="color: #38a169;">Proudly South African Ride-Sharing Platform</h1> <h2 style="color: #d69e2e;">Swift!</h2> <p>Hello,</p> <p>Your vehicle has been verified by the Swift Admin Team. Here are the details of your verified vehicle:</p> <div style="border: 1px solid #38a169; padding: 10px; background-color: #f0f8ff;"> <p><strong>Make:</strong> ${vehicle.make}</p> <p><strong>Model:</strong> ${vehicle.model}</p> <p><strong>Year:</strong> ${vehicle.year}</p> <p><strong>Registration:</strong> ${vehicle.registration}</p> <p><strong>Color:</strong> ${vehicle.color}</p> <p><strong>Insurance Details:</strong> ${vehicle.insuranceDetails}</p> </div> <p>Thank you,</p> <p><strong>Swift Admin Team</strong></p> <div style="text-align: center; color: #38a169;"> <p>South Africa's most innovative e-hailing service.</p> </div> <div style="text-align: center;"></div> <div style="text-align: center; color: #d69e2e; margin-top: 20px;"> <p>© 2025 Swift! All rights reserved.</p> </div> </div>`,
+    };
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        console.error("Email error:", error);
+      } else {
+        console.log("Email sent:", info.response);
+      }
+    });
+    res.json({
+      message: "Vehicle verified successfully",
+      vehicle: {
+        id: vehicle._id,
+        make: vehicle.make,
+        model: vehicle.model,
+        ownerEmail: vehicle.ownerEmail,
+        adminVerified: vehicle.adminVerified,
+      },
+    });
+  } catch (error) {
+    console.error("Verification error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
 router.get("/users/vehicle-owners", adminAuth, async (req, res) => {
   try {
     const owners = await VehicleOwner.find().select("-password").lean();

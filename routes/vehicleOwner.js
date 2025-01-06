@@ -170,8 +170,15 @@ const vehicleUploadFields = upload.fields([
 // Add a new vehicle
 router.post("/addVehicle", auth, vehicleUploadFields, async (req, res) => {
   try {
-    const { make, model, year, registration, color, insuranceDetails } =
-      req.body;
+    const {
+      make,
+      model,
+      ownerEmail,
+      year,
+      registration,
+      color,
+      insuranceDetails,
+    } = req.body;
 
     const files = req.files;
     const uploadPromises = [];
@@ -199,11 +206,12 @@ router.post("/addVehicle", auth, vehicleUploadFields, async (req, res) => {
     const vehicleData = {
       make,
       model,
+      ownerEmail,
       year: parseInt(year),
       registration,
       color,
       insuranceDetails,
-      owner: req.user.id, // Add reference to vehicle owner
+      owner: req.user.id,
     };
 
     // Add uploaded document URLs to vehicle data
@@ -231,7 +239,7 @@ router.post("/addVehicle", auth, vehicleUploadFields, async (req, res) => {
 });
 
 // Get all vehicles for the authenticated owner
-router.get("/", auth, async (req, res) => {
+router.get("/getVehicles", auth, async (req, res) => {
   try {
     const vehicles = await Vehicle.find({ owner: req.user.id });
     res.json(vehicles);
@@ -244,179 +252,184 @@ router.get("/", auth, async (req, res) => {
 });
 
 // Get vehicle by ID (only if owned by authenticated user)
-router.get("/:id", auth, async (req, res) => {
+router.get("/getVehicle/:id", auth, async (req, res) => {
   try {
-    const vehicle = await Vehicle.findOne({
-      _id: req.params.id,
-      owner: req.user.id,
-    });
-
+    const { id } = req.params;
+    const vehicle = await Vehicle.findById(id).select("-password").lean();
     if (!vehicle) {
-      return res.status(404).json({ message: "Vehicle not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Vehicle not found" });
     }
-
-    res.json(vehicle);
+    res.status(200).json({ success: true, data: vehicle });
   } catch (error) {
-    res.status(500).json({
-      message: "Server error",
-      error: error.message,
-    });
+    console.error(error);
+    res.status(500).json({ success: false, message: "Server Error" });
   }
 });
-
 // Update vehicle by ID (PUT)
-router.put("/:id", auth, vehicleUploadFields, async (req, res) => {
-  try {
-    const vehicle = await Vehicle.findOne({
-      _id: req.params.id,
-      owner: req.user.id,
-    });
+router.put(
+  "/updateVehicle/:id",
+  auth,
+  vehicleUploadFields,
+  async (req, res) => {
+    const { id } = req.params;
 
-    if (!vehicle) {
-      return res.status(404).json({ message: "Vehicle not found" });
-    }
+    try {
+      const vehicle = await Vehicle.findById(id);
 
-    const files = req.files;
-    const uploadPromises = [];
-
-    // Handle document uploads
-    const vehicleDocs = {
-      registrationPapers: files.registrationPapers?.[0],
-      insuranceCertificate: files.insuranceCertificate?.[0],
-      roadworthyCertificate: files.roadworthyCertificate?.[0],
-    };
-
-    for (const [key, file] of Object.entries(vehicleDocs)) {
-      if (file) {
-        uploadPromises.push(
-          uploadToCloudinary(file.buffer).then((result) => ({
-            field: key,
-            result,
-          }))
-        );
+      if (!vehicle) {
+        return res.status(404).json({ message: "Vehicle not found" });
       }
-    }
 
-    const uploadResults = await Promise.all(uploadPromises);
+      const updates = {};
+      const allowedUpdates = [
+        "make",
+        "model",
+        "year",
+        "registration",
+        "color",
+        "insuranceDetails",
+      ];
 
-    const updates = {
-      make: req.body.make,
-      model: req.body.model,
-      year: parseInt(req.body.year),
-      registration: req.body.registration,
-      color: req.body.color,
-      insuranceDetails: req.body.insuranceDetails,
-    };
-
-    // Add uploaded document URLs to updates
-    uploadResults.forEach(({ field, result }) => {
-      updates[field] = {
-        public_id: result.public_id,
-        url: result.secure_url,
-      };
-    });
-
-    const updatedVehicle = await Vehicle.findByIdAndUpdate(
-      req.params.id,
-      updates,
-      { new: true }
-    );
-
-    res.json({
-      message: "Vehicle updated successfully",
-      vehicle: updatedVehicle,
-    });
-  } catch (error) {
-    res.status(500).json({
-      message: "Server error",
-      error: error.message,
-    });
-  }
-});
-
-// Update vehicle by ID (PATCH)
-router.patch("/:id", auth, vehicleUploadFields, async (req, res) => {
-  try {
-    const vehicle = await Vehicle.findOne({
-      _id: req.params.id,
-      owner: req.user.id,
-    });
-
-    if (!vehicle) {
-      return res.status(404).json({ message: "Vehicle not found" });
-    }
-
-    const updates = {};
-    const allowedUpdates = [
-      "make",
-      "model",
-      "year",
-      "registration",
-      "color",
-      "insuranceDetails",
-    ];
-
-    // Only include fields that are present in the request
-    Object.keys(req.body).forEach((key) => {
-      if (allowedUpdates.includes(key)) {
-        updates[key] = key === "year" ? parseInt(req.body[key]) : req.body[key];
-      }
-    });
-
-    // Handle file uploads if present
-    if (req.files) {
-      const uploadPromises = [];
-      const vehicleDocs = {
-        registrationPapers: req.files.registrationPapers?.[0],
-        insuranceCertificate: req.files.insuranceCertificate?.[0],
-        roadworthyCertificate: req.files.roadworthyCertificate?.[0],
-      };
-
-      for (const [key, file] of Object.entries(vehicleDocs)) {
-        if (file) {
-          uploadPromises.push(
-            uploadToCloudinary(file.buffer).then((result) => ({
-              field: key,
-              result,
-            }))
-          );
+      Object.keys(req.body).forEach((key) => {
+        if (allowedUpdates.includes(key)) {
+          updates[key] =
+            key === "year" ? parseInt(req.body[key]) : req.body[key];
         }
+      });
+
+      if (req.files) {
+        const uploadPromises = [];
+        const vehicleDocs = {
+          registrationPapers: req.files.registrationPapers?.[0],
+          insuranceCertificate: req.files.insuranceCertificate?.[0],
+          roadworthyCertificate: req.files.roadworthyCertificate?.[0],
+        };
+
+        for (const [key, file] of Object.entries(vehicleDocs)) {
+          if (file) {
+            uploadPromises.push(
+              uploadToCloudinary(file.buffer).then((result) => ({
+                field: key,
+                result,
+              }))
+            );
+          }
+        }
+
+        const uploadResults = await Promise.all(uploadPromises);
+        uploadResults.forEach(({ field, result }) => {
+          updates[field] = {
+            public_id: result.public_id,
+            url: result.secure_url,
+          };
+        });
       }
 
-      const uploadResults = await Promise.all(uploadPromises);
-      uploadResults.forEach(({ field, result }) => {
-        updates[field] = {
-          public_id: result.public_id,
-          url: result.secure_url,
-        };
+      const updatedVehicle = await Vehicle.findByIdAndUpdate(
+        req.params.id,
+        updates,
+        { new: true }
+      );
+
+      res.json({
+        message: "Vehicle updated successfully",
+        vehicle: updatedVehicle,
+      });
+    } catch (error) {
+      res.status(500).json({
+        message: "Server error",
+        error: error.message,
       });
     }
-
-    const updatedVehicle = await Vehicle.findByIdAndUpdate(
-      req.params.id,
-      updates,
-      { new: true }
-    );
-
-    res.json({
-      message: "Vehicle updated successfully",
-      vehicle: updatedVehicle,
-    });
-  } catch (error) {
-    res.status(500).json({
-      message: "Server error",
-      error: error.message,
-    });
   }
-});
+);
+
+// Update vehicle by ID (PATCH)
+router.patch(
+  "/updateVehicle/:id",
+  auth,
+  vehicleUploadFields,
+  async (req, res) => {
+    const { id } = req.params;
+
+    try {
+      const vehicle = await Vehicle.findById(id); // Corrected line
+
+      if (!vehicle) {
+        return res.status(404).json({ message: "Vehicle not found" });
+      }
+
+      const updates = {};
+      const allowedUpdates = [
+        "make",
+        "model",
+        "year",
+        "registration",
+        "color",
+        "insuranceDetails",
+      ];
+
+      Object.keys(req.body).forEach((key) => {
+        if (allowedUpdates.includes(key)) {
+          updates[key] =
+            key === "year" ? parseInt(req.body[key]) : req.body[key];
+        }
+      });
+
+      if (req.files) {
+        const uploadPromises = [];
+        const vehicleDocs = {
+          registrationPapers: req.files.registrationPapers?.[0],
+          insuranceCertificate: req.files.insuranceCertificate?.[0],
+          roadworthyCertificate: req.files.roadworthyCertificate?.[0],
+        };
+
+        for (const [key, file] of Object.entries(vehicleDocs)) {
+          if (file) {
+            uploadPromises.push(
+              uploadToCloudinary(file.buffer).then((result) => ({
+                field: key,
+                result,
+              }))
+            );
+          }
+        }
+
+        const uploadResults = await Promise.all(uploadPromises);
+        uploadResults.forEach(({ field, result }) => {
+          updates[field] = {
+            public_id: result.public_id,
+            url: result.secure_url,
+          };
+        });
+      }
+
+      const updatedVehicle = await Vehicle.findByIdAndUpdate(
+        req.params.id,
+        updates,
+        { new: true }
+      );
+
+      res.json({
+        message: "Vehicle updated successfully",
+        vehicle: updatedVehicle,
+      });
+    } catch (error) {
+      res.status(500).json({
+        message: "Server error",
+        error: error.message,
+      });
+    }
+  }
+);
 
 // Delete vehicle by ID
-router.delete("/:id", auth, async (req, res) => {
+router.delete("/delete/:vehicleId", auth, async (req, res) => {
   try {
-    const vehicle = await Vehicle.findOneAndDelete({
-      _id: req.params.id,
-      owner: req.user.id,
-    });
+    const { id } = req.params;
+    const vehicle = await Vehicle.findOneAndDelete(id);
 
     if (!vehicle) {
       return res.status(404).json({ message: "Vehicle not found" });

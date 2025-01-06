@@ -1,20 +1,68 @@
 const mongoose = require("mongoose");
 
 const vehicleSchema = new mongoose.Schema({
-  make: String,
-  model: String,
-  year: Number,
-  registration: String,
-  color: String,
-  insuranceDetails: String,
-  registrationPapers: { public_id: String, url: String },
-  insuranceCertificate: { public_id: String, url: String },
-  roadworthyCertificate: { public_id: String, url: String },
+  make: {
+    type: String,
+    required: true,
+  },
+  model: {
+    type: String,
+    required: true,
+  },
+  ownerEmail: {
+    type: String,
+    required: true,
+  },
+  year: {
+    type: Number,
+    required: true,
+  },
+  registration: {
+    type: String,
+    required: true,
+  },
+  color: {
+    type: String,
+    required: true,
+  },
+  insuranceDetails: {
+    type: String,
+    required: true,
+  },
+  registrationPapers: {
+    public_id: {
+      type: String,
+      required: true,
+    },
+    url: {
+      type: String,
+      required: true,
+    },
+  },
+  insuranceCertificate: {
+    public_id: {
+      type: String,
+      required: true,
+    },
+    url: {
+      type: String,
+      required: true,
+    },
+  },
+  roadworthyCertificate: {
+    public_id: {
+      type: String,
+      required: true,
+    },
+    url: {
+      type: String,
+      required: true,
+    },
+  },
   adminVerified: {
     type: Boolean,
     default: false,
   },
-
   owner: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "VehicleOwner",
