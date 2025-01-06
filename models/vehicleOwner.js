@@ -27,41 +27,9 @@ const vehicleOwnerSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    driverLicense: {
-      public_id: String,
-      url: String,
-    },
-    prdp: {
-      public_id: String,
-      url: String,
-    },
-    policeClearance: {
-      public_id: String,
-      url: String,
-    },
     proofOfAddress: {
       public_id: String,
       url: String,
-    },
-    vehicle: {
-      make: String,
-      model: String,
-      year: Number,
-      registration: String,
-      color: String,
-      insuranceDetails: String,
-      registrationPapers: {
-        public_id: String,
-        url: String,
-      },
-      insuranceCertificate: {
-        public_id: String,
-        url: String,
-      },
-      roadworthyCertificate: {
-        public_id: String,
-        url: String,
-      },
     },
     criminalRecordCheck: {
       type: Boolean,
@@ -90,6 +58,13 @@ const vehicleOwnerSchema = new mongoose.Schema(
     password: {
       type: String,
     },
+
+    vehicles: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Vehicle",
+      },
+    ],
   },
   { timestamps: true }
 );

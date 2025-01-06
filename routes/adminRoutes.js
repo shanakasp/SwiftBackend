@@ -6,6 +6,7 @@ const Rider = require("../models/rider");
 const bcrypt = require("bcryptjs");
 const Message = require("../models/message");
 const Admin = require("../models/admin");
+const Vehicle = require("../models/vehicleSchema");
 const Job = require("../models/job");
 const JobApplicant = require("../models/jobApplicants");
 const { uploadToCloudinary } = require("../utils/cloudinary");
@@ -160,11 +161,6 @@ router.get("/users/drivers", adminAuth, async (req, res) => {
   } catch (error) {
     res.status(500).send("Server Error");
   }
-});
-
-router.get("/users/vehicle-owners", adminAuth, async (req, res) => {
-  const owners = await VehicleOwner.find().select("-password");
-  res.json(owners);
 });
 
 router.get("/users/riders", adminAuth, async (req, res) => {
@@ -639,13 +635,60 @@ router.patch(
   }
 );
 
-router.get("/vehicleOwner/:id", auth, async (req, res) => {
+router.get("/users/vehicle-owners", adminAuth, async (req, res) => {
+  try {
+    const owners = await VehicleOwner.find().select("-password").lean();
+
+    const ownersWithVehicles = await Promise.all(
+      owners.map(async (owner) => {
+        const vehicles = await Vehicle.find({ owner: owner._id });
+
+        return {
+          ...owner,
+          vehicles,
+          vehicleCount: vehicles.length,
+          documentStatus: {
+            hasDriverLicense: !!owner.driverLicense?.url,
+            hasPRDP: !!owner.prdp?.url,
+            hasPoliceClearance: !!owner.policeClearance?.url,
+            hasProofOfAddress: !!owner.proofOfAddress?.url,
+          },
+          verificationStatus: {
+            isVerified: owner.adminVerified,
+            documentsComplete: true,
+            consentComplete:
+              owner.consentDrivingRecordCheck &&
+              owner.consentEmploymentVerification &&
+              owner.acceptTermsConditions &&
+              owner.consentDataProcessing,
+          },
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      count: owners.length,
+      owners: ownersWithVehicles,
+    });
+  } catch (error) {
+    console.error("Error fetching vehicle owners:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching vehicle owners",
+      error: error.message,
+    });
+  }
+});
+
+router.get("/vehicleOwner/:id", adminAuth, async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Find driver with all details except password
+    // Find vehicle owner and populate vehicles
     const vehicleOwner = await VehicleOwner.findById(id)
       .select("-password")
+      .populate("vehicles")
       .lean();
 
     if (!vehicleOwner) {
@@ -655,9 +698,12 @@ router.get("/vehicleOwner/:id", auth, async (req, res) => {
       });
     }
 
-    // Add additional metadata for admin view
+    // Get all vehicles for this owner
+    const vehicles = await Vehicle.find({ owner: id });
+
     const vehicleOwnerWithMetaData = {
       ...vehicleOwner,
+      vehicles, // Add vehicles array
       documentStatus: {
         hasDriverLicense: !!vehicleOwner.driverLicense?.url,
         hasPRDP: !!vehicleOwner.prdp?.url,
@@ -671,7 +717,7 @@ router.get("/vehicleOwner/:id", auth, async (req, res) => {
       },
       verificationStatus: {
         isVerified: vehicleOwner.adminVerified,
-        documentsComplete: true, // This will be updated below
+        documentsComplete: true,
         consentComplete:
           vehicleOwner.consentDrivingRecordCheck &&
           vehicleOwner.consentEmploymentVerification &&
@@ -680,7 +726,6 @@ router.get("/vehicleOwner/:id", auth, async (req, res) => {
       },
     };
 
-    // Check if all required documents are uploaded
     vehicleOwnerWithMetaData.verificationStatus.documentsComplete =
       Object.values(vehicleOwnerWithMetaData.documentStatus).every(
         (status) => status
