@@ -385,6 +385,29 @@ router.post("/login", async (req, res) => {
   }
 });
 
+router.put("/:id/password", auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { oldPassword, newPassword } = req.body;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid vehicle owner ID" });
+    }
+    const owner = await VehicleOwner.findById(id);
+    if (!owner) {
+      return res.status(404).json({ message: "Vehicle owner not found" });
+    }
+    const isMatch = await bcrypt.compare(oldPassword, owner.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Old password is incorrect" });
+    }
+    const salt = await bcrypt.genSalt(10);
+    owner.password = await bcrypt.hash(newPassword, salt);
+    await owner.save();
+    res.status(200).json({ message: "Password updated successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
 // Configure multer for vehicle document uploads
 const vehicleUploadFields = upload.fields([
   { name: "registrationPapers", maxCount: 1 },
@@ -907,36 +930,26 @@ router.put("/nominate-driver/:id", auth, uploadFields, async (req, res) => {
     });
   }
 });
-
 router.patch("/nominate-driver/:id", auth, uploadFields, async (req, res) => {
   try {
     const { id } = req.params;
     const driver = await NominateDriver.findById(id);
-
     if (!driver) {
-      return res.status(404).json({
-        message: "Driver not found",
-      });
+      return res.status(404).json({ message: "Driver not found" });
     }
-
-    // Check if the authenticated user is the one who created the driver
     if (driver.nominatedBy.toString() !== req.user.id) {
-      return res.status(403).json({
-        message: "You are not authorized to edit this driver",
-      });
+      return res
+        .status(403)
+        .json({ message: "You are not authorized to edit this driver" });
     }
-
-    // Handle file uploads to Cloudinary
     const uploadPromises = [];
     const files = req.files;
-
     const driverDocs = {
       driverLicense: files.driverLicense?.[0],
       prdp: files.prdp?.[0],
       policeClearance: files.policeClearance?.[0],
       proofOfAddress: files.proofOfAddress?.[0],
     };
-
     for (const [key, file] of Object.entries(driverDocs)) {
       if (file) {
         uploadPromises.push(
@@ -947,41 +960,37 @@ router.patch("/nominate-driver/:id", auth, uploadFields, async (req, res) => {
         );
       }
     }
-
     const uploadResults = await Promise.all(uploadPromises);
-
-    // Prepare updates for driver data
     const updates = {};
     const allowedUpdates = [
       "fullName",
       "idPassportNumber",
       "dateOfBirth",
-      // "email",
       "phone",
+      // "email",
       "address",
       "drivingLicenseExpireDate",
       "vehicleIds",
     ];
-
     Object.keys(req.body).forEach((key) => {
       if (allowedUpdates.includes(key)) {
-        updates[key] =
-          key === "dateOfBirth" ? new Date(req.body[key]) : req.body[key];
+        if (key === "dateOfBirth") {
+          updates[key] = new Date(req.body[key]);
+        } else if (key === "vehicleIds") {
+          updates[key] = req.body[key]
+            .split(",")
+            .map((id) => mongoose.Types.ObjectId(id.trim()));
+        } else {
+          updates[key] = req.body[key];
+        }
       }
     });
-
-    // Add uploaded document URLs to updates
     uploadResults.forEach(({ field, result }) => {
-      updates[field] = {
-        public_id: result.public_id,
-        url: result.secure_url,
-      };
+      updates[field] = { public_id: result.public_id, url: result.secure_url };
     });
-
     const updatedDriver = await NominateDriver.findByIdAndUpdate(id, updates, {
       new: true,
     });
-
     res.status(200).json({
       success: true,
       message: "Driver updated successfully",
@@ -993,11 +1002,9 @@ router.patch("/nominate-driver/:id", auth, uploadFields, async (req, res) => {
     });
   } catch (error) {
     console.error("Driver update error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-      error: error.message,
-    });
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: error.message });
   }
 });
 

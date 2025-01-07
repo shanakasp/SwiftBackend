@@ -6,6 +6,7 @@ const VehicleOwner = require("../models/vehicleOwner");
 const { generateToken } = require("../utils/jwt");
 const auth = require("../middleware/auth");
 const adminAuth = require("../middleware/adminAuth");
+const mongoose = require("mongoose");
 
 const router = express.Router();
 
@@ -30,6 +31,31 @@ router.post("/login", async (req, res) => {
       token,
       driverId: nominateDriver._id,
     });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+//Change PW
+router.put("/:id/password", auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { oldPassword, newPassword } = req.body;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid driver ID" });
+    }
+    const nominateDriver = await NominateDriver.findById(id);
+    if (!nominateDriver) {
+      return res.status(404).json({ message: "Driver not found" });
+    }
+    const isMatch = await bcrypt.compare(oldPassword, nominateDriver.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Old password is incorrect" });
+    }
+    const salt = await bcrypt.genSalt(10);
+    nominateDriver.password = await bcrypt.hash(newPassword, salt);
+    await nominateDriver.save();
+    res.status(200).json({ message: "Password updated successfully" });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -181,12 +207,10 @@ router.patch("/update-expire-date", auth, async (req, res) => {
     if (!updatedDriver) {
       return res.status(404).json({ message: "Driver not found" });
     }
-    res
-      .status(200)
-      .json({
-        message: "Driving license expiration date updated successfully",
-        driver: updatedDriver,
-      });
+    res.status(200).json({
+      message: "Driving license expiration date updated successfully",
+      driver: updatedDriver,
+    });
   } catch (error) {
     console.error("Update error:", error);
     res.status(500).json({ message: "Server error", error: error.message });

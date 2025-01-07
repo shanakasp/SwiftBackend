@@ -4,6 +4,7 @@ const Driver = require("../models/driver");
 const auth = require("../middleware/auth");
 const upload = require("../middleware/upload");
 const { uploadToCloudinary } = require("../utils/cloudinary");
+const mongoose = require("mongoose");
 const { generateToken } = require("../utils/jwt");
 // Configure multer for multiple file uploads
 const uploadFields = upload.fields([
@@ -404,6 +405,30 @@ router.post("/login", async (req, res) => {
 
     const token = generateToken(driver);
     res.json({ message: "Login successful", token });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+router.put("/drivers/:id/password", auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { oldPassword, newPassword } = req.body;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid driver ID" });
+    }
+    const driver = await Driver.findById(id);
+    if (!driver) {
+      return res.status(404).json({ message: "Driver not found" });
+    }
+    const isMatch = await bcrypt.compare(oldPassword, driver.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Old password is incorrect" });
+    }
+    const salt = await bcrypt.genSalt(10);
+    driver.password = await bcrypt.hash(newPassword, salt);
+    await driver.save();
+    res.status(200).json({ message: "Password updated successfully" });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }

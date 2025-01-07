@@ -5,6 +5,7 @@ const VehicleOwner = require("../models/vehicleOwner");
 const Rider = require("../models/rider");
 const bcrypt = require("bcryptjs");
 const Message = require("../models/message");
+const mongoose = require("mongoose");
 const Admin = require("../models/admin");
 const Vehicle = require("../models/vehicleSchema");
 const Job = require("../models/job");
@@ -44,7 +45,29 @@ router.get("/admins", adminAuth, async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 });
-
+router.put("/admins/:id/password", adminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { oldPassword, newPassword } = req.body;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid admin ID" });
+    }
+    const admin = await Admin.findById(id);
+    if (!admin) {
+      return res.status(404).json({ message: "Admin not found" });
+    }
+    const isMatch = await bcrypt.compare(oldPassword, admin.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Old password is incorrect" });
+    }
+    const salt = await bcrypt.genSalt(10);
+    admin.password = await bcrypt.hash(newPassword, salt);
+    await admin.save();
+    res.status(200).json({ message: "Password updated successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
 router.get("/admins/:id", adminAuth, async (req, res) => {
   try {
     const { id } = req.params;
@@ -892,7 +915,7 @@ router.get("/unverified-vehicleOwner", adminAuth, async (req, res) => {
 });
 
 //Driver license expiry date change
-router.patch("/drivers/:id/license-expiry", async (req, res) => {
+router.patch("/drivers/:id/license-expiry", adminAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const { drivingLicenseExpireDate } = req.body;
@@ -914,7 +937,7 @@ router.patch("/drivers/:id/license-expiry", async (req, res) => {
 });
 
 //Driver license expiry date change
-router.patch("/drivers/:id/license-expiry-ND", async (req, res) => {
+router.patch("/drivers/:id/license-expiry-ND", adminAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const { drivingLicenseExpireDate } = req.body;
