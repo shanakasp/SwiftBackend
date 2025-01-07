@@ -167,5 +167,30 @@ router.get("/getVehicleOwnerDetails", auth, async (req, res) => {
     });
   }
 });
+router.patch("/update-expire-date", auth, async (req, res) => {
+  try {
+    const { drivingLicenseExpireDate } = req.body;
+    if (!drivingLicenseExpireDate) {
+      return res.status(400).json({ message: "Expiration date is required" });
+    }
+    const updatedDriver = await NominateDriver.findByIdAndUpdate(
+      req.user.id,
+      { drivingLicenseExpireDate },
+      { new: true }
+    );
+    if (!updatedDriver) {
+      return res.status(404).json({ message: "Driver not found" });
+    }
+    res
+      .status(200)
+      .json({
+        message: "Driving license expiration date updated successfully",
+        driver: updatedDriver,
+      });
+  } catch (error) {
+    console.error("Update error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
 
 module.exports = router;

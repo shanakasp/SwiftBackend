@@ -913,6 +913,28 @@ router.patch("/drivers/:id/license-expiry", async (req, res) => {
   }
 });
 
+//Driver license expiry date change
+router.patch("/drivers/:id/license-expiry-ND", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { drivingLicenseExpireDate } = req.body;
+    const updatedDriver = await NominateDriver.findByIdAndUpdate(
+      id,
+      { drivingLicenseExpireDate },
+      { new: true }
+    );
+    if (!updatedDriver) {
+      return res.status(404).json({ message: "Driver not found" });
+    }
+    res.status(200).json({
+      message: "Driving license expiry date updated successfully",
+      driver: updatedDriver,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
 router.get("/nominatedDrivers", adminAuth, async (req, res) => {
   try {
     const drivers = await NominateDriver.find();

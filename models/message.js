@@ -5,30 +5,30 @@ const messageSchema = new mongoose.Schema({
     id: {
       type: mongoose.Schema.Types.ObjectId,
       required: true,
-      refPath: "senderModel",
+      refPath: "sender.model",
     },
     model: {
       type: String,
       required: true,
-      enum: ["Admin", "Rider", "Driver"],
+      enum: ["Admin", "Rider", "Driver", "NominateDriver", "VehicleOwner"],
     },
   },
   receiver: {
     id: {
       type: mongoose.Schema.Types.ObjectId,
       // Not required for messages to admin
-      refPath: "receiverModel",
+      refPath: "receiver.model",
     },
     model: {
       type: String,
       required: true,
-      enum: ["Admin", "Rider", "Driver"],
+      enum: ["Admin", "Rider", "Driver", "NominateDriver", "VehicleOwner"],
     },
   },
   title: {
     type: String,
-    required: true,
-    enum: ["Rider", "Driver"],
+
+    enum: ["Rider", "Driver", "VehicleOwner", "NominateDriver"],
   },
   category: {
     type: String,

@@ -37,10 +37,16 @@ router.post(
         }));
       }
 
+      const role = req.user.role.toLowerCase();
       const newMessage = new Message({
         sender: {
           id: req.user.id,
-          model: req.user.role.charAt(0).toUpperCase() + req.user.role.slice(1),
+          model:
+            role === "nominatedriver"
+              ? "NominateDriver"
+              : role === "vehicleowner"
+              ? "VehicleOwner"
+              : req.user.role.charAt(0).toUpperCase() + role.slice(1),
         },
         receiver: {
           model: "Admin",

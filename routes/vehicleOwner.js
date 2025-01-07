@@ -35,7 +35,12 @@ router.post("/register", uploadFields, async (req, res) => {
       consentEmploymentVerification,
       acceptTermsConditions,
       consentDataProcessing,
+      vehicleIds,
     } = req.body;
+
+    const vehicleIdArray = vehicleIds
+      .split(",")
+      .map((id) => mongoose.Types.ObjectId(id.trim()));
 
     const existingOwner = await VehicleOwner.findOne({ email });
     if (existingOwner) {
@@ -106,6 +111,7 @@ router.post("/register", uploadFields, async (req, res) => {
         color: req.body.color,
         insuranceDetails: req.body.insuranceDetails,
       },
+      vehicleIds: vehicleIdArray,
     };
 
     uploadResults.forEach(({ field, result, isVehicle }) => {
@@ -144,6 +150,216 @@ router.post("/register", uploadFields, async (req, res) => {
   }
 });
 
+router.put("/register", auth, uploadFields, async (req, res) => {
+  try {
+    const {
+      fullName,
+      idPassportNumber,
+      dateOfBirth,
+      email,
+      proofOfAddress,
+      phone,
+      address,
+      criminalRecordCheck,
+      consentDrivingRecordCheck,
+      consentEmploymentVerification,
+      acceptTermsConditions,
+      consentDataProcessing,
+    } = req.body;
+    const existingOwner = await VehicleOwner.findById(req.user.id);
+    if (!existingOwner) {
+      return res.status(404).json({ message: "Vehicle owner not found" });
+    }
+    const uploadPromises = [];
+    const files = req.files;
+    const ownerDocs = {
+      driverLicense: files.driverLicense?.[0],
+      prdp: files.prdp?.[0],
+      imageID: files.imageID?.[0],
+      policeClearance: files.policeClearance?.[0],
+      proofOfAddress: files.proofOfAddress?.[0],
+    };
+    const vehicleDocs = {
+      registrationPapers: files.registrationPapers?.[0],
+      insuranceCertificate: files.insuranceCertificate?.[0],
+      roadworthyCertificate: files.roadworthyCertificate?.[0],
+    };
+    for (const [key, file] of Object.entries(ownerDocs)) {
+      if (file) {
+        uploadPromises.push(
+          uploadToCloudinary(file.buffer).then((result) => ({
+            field: key,
+            result,
+          }))
+        );
+      }
+    }
+    for (const [key, file] of Object.entries(vehicleDocs)) {
+      if (file) {
+        uploadPromises.push(
+          uploadToCloudinary(file.buffer).then((result) => ({
+            field: key,
+            result,
+            isVehicle: true,
+          }))
+        );
+      }
+    }
+    const uploadResults = await Promise.all(uploadPromises);
+    const updateData = {
+      fullName,
+      idPassportNumber,
+      dateOfBirth: dateOfBirth
+        ? new Date(dateOfBirth)
+        : existingOwner.dateOfBirth,
+      email,
+      phone,
+      address,
+      criminalRecordCheck: criminalRecordCheck === "true",
+      consentDrivingRecordCheck: consentDrivingRecordCheck === "true",
+      consentEmploymentVerification: consentEmploymentVerification === "true",
+      acceptTermsConditions: acceptTermsConditions === "true",
+      consentDataProcessing: consentDataProcessing === "true",
+    };
+    uploadResults.forEach(({ field, result, isVehicle }) => {
+      if (isVehicle) {
+        updateData.vehicle[field] = {
+          public_id: result.public_id,
+          url: result.secure_url,
+        };
+      } else {
+        updateData[field] = {
+          public_id: result.public_id,
+          url: result.secure_url,
+        };
+      }
+    });
+    await VehicleOwner.findByIdAndUpdate(req.user.id, { $set: updateData });
+    res.status(200).json({ message: "Vehicle Owner updated successfully" });
+  } catch (error) {
+    console.error("Update error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+router.patch("/register", auth, uploadFields, async (req, res) => {
+  try {
+    const {
+      fullName,
+      idPassportNumber,
+      dateOfBirth,
+      email,
+      proofOfAddress,
+      phone,
+      address,
+      criminalRecordCheck,
+      consentDrivingRecordCheck,
+      consentEmploymentVerification,
+      acceptTermsConditions,
+      consentDataProcessing,
+    } = req.body;
+    const existingOwner = await VehicleOwner.findById(req.user.id);
+    if (!existingOwner) {
+      return res.status(404).json({ message: "Vehicle owner not found" });
+    }
+    const uploadPromises = [];
+    const files = req.files;
+    const ownerDocs = {
+      driverLicense: files.driverLicense?.[0],
+      prdp: files.prdp?.[0],
+      imageID: files.imageID?.[0],
+      policeClearance: files.policeClearance?.[0],
+      proofOfAddress: files.proofOfAddress?.[0],
+    };
+    const vehicleDocs = {
+      registrationPapers: files.registrationPapers?.[0],
+      insuranceCertificate: files.insuranceCertificate?.[0],
+      roadworthyCertificate: files.roadworthyCertificate?.[0],
+    };
+    for (const [key, file] of Object.entries(ownerDocs)) {
+      if (file) {
+        uploadPromises.push(
+          uploadToCloudinary(file.buffer).then((result) => ({
+            field: key,
+            result,
+          }))
+        );
+      }
+    }
+    for (const [key, file] of Object.entries(vehicleDocs)) {
+      if (file) {
+        uploadPromises.push(
+          uploadToCloudinary(file.buffer).then((result) => ({
+            field: key,
+            result,
+            isVehicle: true,
+          }))
+        );
+      }
+    }
+    const uploadResults = await Promise.all(uploadPromises);
+    const updateData = {
+      fullName,
+      idPassportNumber,
+      dateOfBirth: dateOfBirth
+        ? new Date(dateOfBirth)
+        : existingOwner.dateOfBirth,
+      email,
+      phone,
+      address,
+      criminalRecordCheck: criminalRecordCheck === "true",
+      consentDrivingRecordCheck: consentDrivingRecordCheck === "true",
+      consentEmploymentVerification: consentEmploymentVerification === "true",
+      acceptTermsConditions: acceptTermsConditions === "true",
+      consentDataProcessing: consentDataProcessing === "true",
+    };
+    uploadResults.forEach(({ field, result, isVehicle }) => {
+      if (isVehicle) {
+        updateData.vehicle[field] = {
+          public_id: result.public_id,
+          url: result.secure_url,
+        };
+      } else {
+        updateData[field] = {
+          public_id: result.public_id,
+          url: result.secure_url,
+        };
+      }
+    });
+    await VehicleOwner.findByIdAndUpdate(req.user.id, { $set: updateData });
+    res.status(200).json({ message: "Vehicle Owner updated successfully" });
+  } catch (error) {
+    console.error("Update error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+router.get("/vehicleOwnerProfile", auth, async (req, res) => {
+  try {
+    const vehicleOwner = await VehicleOwner.findById(req.user.id)
+      .select("-password")
+      .select("-vehicles")
+      .select("-nominatedDrivers")
+
+      .lean();
+
+    if (!vehicleOwner) {
+      return res.status(404).json({ message: "Vehicle Owner not found" });
+    }
+
+    res.json({
+      success: true,
+      data: vehicleOwner,
+    });
+  } catch (error) {
+    console.error("Error fetching vehicle owner details:", error);
+    res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
+  }
+});
+
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -159,7 +375,11 @@ router.post("/login", async (req, res) => {
     }
 
     const token = generateToken(owner);
-    res.json({ message: "Login successful", token });
+    res.json({
+      message: "Login successful",
+      token,
+      id: owner._id, // Add the owner's ID to the response
+    });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
