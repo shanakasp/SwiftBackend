@@ -457,7 +457,7 @@ router.patch("/verify-driver/:driverId", adminAuth, async (req, res) => {
       subject: "Swift Admin Team: Your Login Credentials",
       html: ` <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;"> <div style="text-align: center;">
       
-      </div> <h1 style="color: #38a169;">Proudly South African</h1> <h2 style="color: #38a169;">Ride-Sharing Platform</h2> <h3 style="color: #d69e2e;">This is company Swift!</h3> <p>Hello <strong>${driver.fullName}</strong>,</p> <p>Your account has been verified by the Swift Admin Team. Please use the following credentials to log in:</p> <div style="border: 1px solid #38a169; padding: 10px; background-color: #f0f8ff;"> <p><strong>Email:</strong> ${credentials.email}</p> <p><strong>Password:</strong> ${credentials.password}</p> </div> <p>Please change your password after the first login.</p> <p>Thank you,</p> <p><strong>Swift Admin Team</strong></p> <div style="text-align: center; color: #38a169;"> <p>South Africa's most innovative e-hailing service.</p> </div> <div style="text-align: center;"> </div> <div style="text-align: center; color: #d69e2e; margin-top: 20px;"> <p>© 2025 Swift! All rights reserved.</p> </div> </div> `,
+      </div> <h1 style="color: #38a169;">Proudly South African</h1> <h2 style="color: #38a169;">Ride-Sharing Platform</h2> <h3 style="color: #d69e2e;">This is company Swift!</h3> <p>Hello <strong>${driver.fullName}</strong>,</p> <p>Your driver account has been verified by the Swift Admin Team. Please use the following credentials to log in:</p> <div style="border: 1px solid #38a169; padding: 10px; background-color: #f0f8ff;"> <p><strong>Email:</strong> ${credentials.email}</p> <p><strong>Password:</strong> ${credentials.password}</p> </div> <p>Please change your password after the first login.</p> <p>Thank you,</p> <p><strong>Swift Admin Team</strong></p> <div style="text-align: center; color: #38a169;"> <p>South Africa's most innovative e-hailing service.</p> </div> <div style="text-align: center;"> </div> <div style="text-align: center; color: #d69e2e; margin-top: 20px;"> <p>© 2025 Swift! All rights reserved.</p> </div> </div> `,
     };
     transporter.sendMail(mailOptions, (error, info) => {
       if (error) {
@@ -720,11 +720,37 @@ router.patch("/verify-vehicle/:vehicleId", adminAuth, async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 });
+router.get("/nominatedDrivers", adminAuth, async (req, res) => {
+  try {
+    const drivers = await NominateDriver.find();
+    res.status(200).json(drivers);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: "An error occurred while fetching nominated drivers." });
+  }
+});
+
+router.get("/nominatedDriver/:driverId", adminAuth, async (req, res) => {
+  try {
+    const { driverId } = req.params;
+    const driver = await NominateDriver.findById(driverId);
+    if (!driver) {
+      return res.status(404).json({ error: "Nominated driver not found." });
+    }
+    res.status(200).json(driver);
+  } catch (error) {
+    res.status(500).json({
+      error: "An error occurred while fetching the nominated driver.",
+    });
+  }
+});
+
 router.get("/users/vehicle-owners", adminAuth, async (req, res) => {
   try {
     const owners = await VehicleOwner.find().select("-password").lean();
 
-    const ownersWithVehicles = await Promise.all(
+    const ownersWithDetails = await Promise.all(
       owners.map(async (owner) => {
         const vehicles = await Vehicle.find({ owner: owner._id });
 
@@ -732,6 +758,7 @@ router.get("/users/vehicle-owners", adminAuth, async (req, res) => {
           ...owner,
           vehicles,
           vehicleCount: vehicles.length,
+
           documentStatus: {
             hasDriverLicense: !!owner.driverLicense?.url,
             hasPRDP: !!owner.prdp?.url,
@@ -754,7 +781,7 @@ router.get("/users/vehicle-owners", adminAuth, async (req, res) => {
     res.status(200).json({
       success: true,
       count: owners.length,
-      owners: ownersWithVehicles,
+      owners: ownersWithDetails,
     });
   } catch (error) {
     console.error("Error fetching vehicle owners:", error);
@@ -770,10 +797,11 @@ router.get("/vehicleOwner/:id", adminAuth, async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Find vehicle owner and populate vehicles
+    // Find vehicle owner and populate vehicles and nominated drivers
     const vehicleOwner = await VehicleOwner.findById(id)
       .select("-password")
       .populate("vehicles")
+      .populate("nominatedDrivers")
       .lean();
 
     if (!vehicleOwner) {
@@ -786,9 +814,13 @@ router.get("/vehicleOwner/:id", adminAuth, async (req, res) => {
     // Get all vehicles for this owner
     const vehicles = await Vehicle.find({ owner: id });
 
+    // Get all nominated drivers for this owner
+    const nominatedDrivers = await NominateDriver.find({ nominatedBy: id });
+
     const vehicleOwnerWithMetaData = {
       ...vehicleOwner,
       vehicles, // Add vehicles array
+      nominatedDrivers, // Add nominated drivers array
       documentStatus: {
         hasDriverLicense: !!vehicleOwner.driverLicense?.url,
         hasPRDP: !!vehicleOwner.prdp?.url,
@@ -802,19 +834,19 @@ router.get("/vehicleOwner/:id", adminAuth, async (req, res) => {
       },
       verificationStatus: {
         isVerified: vehicleOwner.adminVerified,
-        documentsComplete: true,
-        consentComplete:
-          vehicleOwner.consentDrivingRecordCheck &&
-          vehicleOwner.consentEmploymentVerification &&
-          vehicleOwner.acceptTermsConditions &&
-          vehicleOwner.consentDataProcessing,
+        // documentsComplete: true,
+        // consentComplete:
+        //   vehicleOwner.consentDrivingRecordCheck &&
+        //   vehicleOwner.consentEmploymentVerification &&
+        //   vehicleOwner.acceptTermsConditions &&
+        //   vehicleOwner.consentDataProcessing,
       },
     };
 
-    vehicleOwnerWithMetaData.verificationStatus.documentsComplete =
-      Object.values(vehicleOwnerWithMetaData.documentStatus).every(
-        (status) => status
-      );
+    // vehicleOwnerWithMetaData.verificationStatus.documentsComplete =
+    //   Object.values(vehicleOwnerWithMetaData.documentStatus).every(
+    //     (status) => status
+    //   );
 
     res.status(200).json({
       success: true,
@@ -848,7 +880,7 @@ router.get("/unverified-vehicleOwner", adminAuth, async (req, res) => {
 
     res.json({
       count: unVerifiedVehicleOwner.length,
-      drivers: unVerifiedVehicleOwner,
+      vehicleOwners: unVerifiedVehicleOwner,
     });
   } catch (error) {
     console.error("Fetch error:", error);
@@ -878,6 +910,32 @@ router.patch("/drivers/:id/license-expiry", async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+router.get("/nominatedDrivers", adminAuth, async (req, res) => {
+  try {
+    const drivers = await NominateDriver.find();
+    res.status(200).json(drivers);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: "An error occurred while fetching nominated drivers." });
+  }
+});
+
+router.get("/nominatedDriver/:driverId", adminAuth, async (req, res) => {
+  try {
+    const { driverId } = req.params;
+    const driver = await NominateDriver.findById(driverId);
+    if (!driver) {
+      return res.status(404).json({ error: "Nominated driver not found." });
+    }
+    res.status(200).json(driver);
+  } catch (error) {
+    res.status(500).json({
+      error: "An error occurred while fetching the nominated driver.",
+    });
   }
 });
 
@@ -914,7 +972,7 @@ router.patch(
         from: "Swift Admin Team",
         to: driver.email,
         subject: "Swift Admin Team: Your Login Credentials",
-        html: `<div style="font-family: Arial, sans-serif; padding: 20px; color: #333;"> <div style="text-align: center;"></div> <h1 style="color: #38a169;">Proudly South African Ride-Sharing Platform</h1> <h2 style="color: #d69e2e;">Swift!</h2> <p>Hello <strong>${driver.fullName}</strong>,</p> <p>Your account has been verified by the Swift Admin Team. Please use the following credentials to log in:</p> <div style="border: 1px solid #38a169; padding: 10px; background-color: #f0f8ff;"> <p><strong>Email:</strong> ${credentials.email}</p> <p><strong>Password:</strong> ${credentials.password}</p> </div> <p>Please change your password after the first login.</p> <p>Thank you,</p> <p><strong>Swift Admin Team</strong></p> <div style="text-align: center; color: #38a169;"> <p>South Africa's most innovative e-hailing service.</p> </div> <div style="text-align: center;"></div> <div style="text-align: center; color: #d69e2e; margin-top: 20px;"> <p>© 2025 Swift! All rights reserved.</p> </div> </div>`,
+        html: `<div style="font-family: Arial, sans-serif; padding: 20px; color: #333;"> <div style="text-align: center;"></div> <h1 style="color: #38a169;">Proudly South African Ride-Sharing Platform</h1> <h2 style="color: #d69e2e;">Swift!</h2> <p>Hello <strong>${driver.fullName}</strong>,</p> <p>Your driver account has been verified by the Swift Admin Team. Please use the following credentials to log in:</p> <div style="border: 1px solid #38a169; padding: 10px; background-color: #f0f8ff;"> <p><strong>Email:</strong> ${credentials.email}</p> <p><strong>Password:</strong> ${credentials.password}</p> </div> <p>Please change your password after the first login.</p> <p>Thank you,</p> <p><strong>Swift Admin Team</strong></p> <div style="text-align: center; color: #38a169;"> <p>South Africa's most innovative e-hailing service.</p> </div> <div style="text-align: center;"></div> <div style="text-align: center; color: #d69e2e; margin-top: 20px;"> <p>© 2025 Swift! All rights reserved.</p> </div> </div>`,
       };
       transporter.sendMail(mailOptions, (error, info) => {
         if (error) {

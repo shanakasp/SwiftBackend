@@ -69,6 +69,12 @@ const vehicleOwnerSchema = new mongoose.Schema(
         ref: "Vehicle",
       },
     ],
+    nominatedDrivers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "NominateDriver",
+      },
+    ],
   },
   { timestamps: true }
 );

@@ -1,8 +1,8 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
-const NominateDriver = require("../models/nominateDriverSchema");
+const NominateDriver = require("../models/nominatedDriver");
 const Vehicle = require("../models/vehicleSchema");
-const VehicleOwner = require("../models/vehicleOwnerSchema");
+const VehicleOwner = require("../models/vehicleOwner");
 const { generateToken } = require("../utils/jwt");
 const auth = require("../middleware/auth");
 const adminAuth = require("../middleware/adminAuth");
@@ -58,17 +58,61 @@ router.get("/getOwnDetails", auth, async (req, res) => {
 // Get assigned vehicle details route
 router.get("/getAssignedVehicles", auth, async (req, res) => {
   try {
-    const nominateDriver = await NominateDriver.findById(req.user.id).populate(
-      "vehicleIds"
-    );
+    const nominateDriver = await NominateDriver.findById(req.user.id)
+      .populate({
+        path: "vehicleIds",
+        model: "Vehicle",
+      })
+      .lean();
+
     if (!nominateDriver) {
       return res.status(404).json({ message: "Driver not found" });
     }
+
     res.json({
       success: true,
       data: nominateDriver.vehicleIds,
     });
   } catch (error) {
+    console.error("Error fetching assigned vehicles:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+});
+
+router.get("/getAssignedVehicle/:vehicleId", auth, async (req, res) => {
+  try {
+    const { vehicleId } = req.params;
+
+    const nominatedDriver = await NominateDriver.findById(req.user.id)
+      .populate({
+        path: "vehicleIds",
+        match: { _id: vehicleId },
+        model: "Vehicle",
+      })
+      .lean();
+
+    if (!nominatedDriver) {
+      return res.status(404).json({ message: "Driver not found" });
+    }
+
+    const assignedVehicle = nominatedDriver.vehicleIds.find(
+      (vehicle) => vehicle._id.toString() === vehicleId
+    );
+
+    if (!assignedVehicle) {
+      return res.status(404).json({ message: "Assigned vehicle not found" });
+    }
+
+    res.json({
+      success: true,
+      data: assignedVehicle,
+    });
+  } catch (error) {
+    console.error("Error fetching assigned vehicle:", error);
     res.status(500).json({
       success: false,
       message: "Server error",
@@ -80,21 +124,42 @@ router.get("/getAssignedVehicles", auth, async (req, res) => {
 // Get vehicle owner details route
 router.get("/getVehicleOwnerDetails", auth, async (req, res) => {
   try {
-    const nominateDriver = await NominateDriver.findById(req.user.id);
+    const nominateDriver = await NominateDriver.findById(req.user.id).lean();
     if (!nominateDriver) {
       return res.status(404).json({ message: "Driver not found" });
     }
+
     const vehicleOwner = await VehicleOwner.findById(
       nominateDriver.nominatedBy
-    );
+    ).lean();
     if (!vehicleOwner) {
       return res.status(404).json({ message: "Vehicle Owner not found" });
     }
+
+    // Construct the response with the required fields and hide the unwanted ones
+    const response = {
+      fullName: vehicleOwner.fullName,
+      imageID: vehicleOwner.imageID,
+      dateOfBirth: vehicleOwner.dateOfBirth,
+      email: vehicleOwner.email,
+      phone: vehicleOwner.phone,
+      address: vehicleOwner.address,
+      // idPassportNumber: vehicleOwner.idPassportNumber,
+      // criminalRecordCheck: vehicleOwner.criminalRecordCheck,
+      // consentDrivingRecordCheck: vehicleOwner.consentDrivingRecordCheck,
+      // consentEmploymentVerification: vehicleOwner.consentEmploymentVerification,
+      // acceptTermsConditions: vehicleOwner.acceptTermsConditions,
+      // consentDataProcessing: vehicleOwner.consentDataProcessing,
+      // adminVerified: vehicleOwner.adminVerified,
+      // proofOfAddress: vehicleOwner.proofOfAddress,
+    };
+
     res.json({
       success: true,
-      data: vehicleOwner,
+      data: response,
     });
   } catch (error) {
+    console.error("Error fetching vehicle owner details:", error);
     res.status(500).json({
       success: false,
       message: "Server error",
