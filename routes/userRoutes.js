@@ -76,20 +76,25 @@ router.post(
   }
 );
 
-// POST: Apply for a Security Job
 router.post(
   "/applySecurityJob/:jobId",
   upload.array("documents"),
   async (req, res) => {
     try {
       const { jobId } = req.params;
+      const { email, documentNames } = req.body;
       const files = req.files;
-      const documentNames = req.body.documentNames;
+
+      // Validate email is provided
+      if (!email) {
+        return res.status(400).json({ message: "Email is required" });
+      }
 
       // Log jobId and files received
       console.log("Job ID:", jobId);
       console.log("Files:", files);
       console.log("Document Names:", documentNames);
+      console.log("Email:", email);
 
       // Validate job exists
       const job = await SecurityJob.findById(jobId);
@@ -118,7 +123,6 @@ router.post(
 
       // Upload all files to Cloudinary
       const uploadPromises = files.map(async (file, index) => {
-        // Pass only the buffer to uploadToCloudinary
         const result = await uploadToCloudinary(file.buffer);
         return {
           documentName: documentNames[index],
@@ -129,8 +133,9 @@ router.post(
 
       const uploadedDocuments = await Promise.all(uploadPromises);
 
-      // Create job application
+      // Create job application with email
       const jobApplication = new JobApplicantSecurity({
+        email,
         documents: uploadedDocuments,
         job: jobId,
       });
@@ -141,6 +146,41 @@ router.post(
       // Update job's applicants array
       job.applicants.push(jobApplication._id);
       await job.save();
+
+      // Send confirmation email
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: "shanakaprince@gmail.com",
+          pass: "xqlw xhyl vvem zhlk",
+        },
+      });
+
+      const mailOptions = {
+        from: "Swift Admin Team",
+        to: email,
+        subject: "Swift: Job Application Received",
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+            <h1 style="color: #38a169;">Thank You for Applying!</h1>
+            <p>Dear Applicant,</p>
+            <p>We have received your application for the position at Swift.</p>
+            <p>We will review your application and get back to you soon.</p>
+            <p>Best regards,</p>
+            <p><strong>Swift HR Team</strong></p>
+            <div style="text-align: center; color: #38a169;">
+              <p>South Africa's most innovative e-hailing service.</p>
+            </div>
+            <div style="text-align: center;">
+            </div>
+            <div style="text-align: center; color: #d69e2e; margin-top: 20px;">
+              <p>© 2025 Swift! All rights reserved.</p>
+            </div>
+          </div>
+        `,
+      };
+      // Send email
+      await transporter.sendMail(mailOptions);
 
       res.status(201).json({
         message: "Application submitted successfully",
@@ -155,5 +195,4 @@ router.post(
     }
   }
 );
-
 module.exports = router;

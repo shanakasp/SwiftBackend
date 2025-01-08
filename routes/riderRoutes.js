@@ -78,60 +78,105 @@ router.get("/profile", auth, async (req, res) => {
   }
 });
 
-router.patch("/:id", auth, async (req, res) => {
+router.put("/update", auth, upload.single("image"), async (req, res) => {
   try {
-    const { id } = req.params;
-    const updates = req.body;
-    const allowedUpdates = ["username", "email", "mobileNo", "image"]; // Add other allowed fields as necessary
-    const updateFields = Object.keys(updates);
+    const { username, email, mobileNo } = req.body;
 
-    const isValidOperation = updateFields.every((field) =>
-      allowedUpdates.includes(field)
-    );
-
-    if (!isValidOperation) {
-      return res.status(400).json({ message: "Invalid updates" });
-    }
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: "Invalid rider ID" });
-    }
-
-    const rider = await Rider.findByIdAndUpdate(id, updates, { new: true });
-
-    if (!rider) {
+    // Check if rider exists
+    const existingRider = await Rider.findById(req.user.id);
+    if (!existingRider) {
       return res.status(404).json({ message: "Rider not found" });
     }
 
-    res.status(200).json(rider); // Return the updated rider details
+    // Prepare update data with existing fields
+    const updateData = {
+      username: username || existingRider.username,
+      email: email || existingRider.email,
+      mobileNo: mobileNo || existingRider.mobileNo,
+      image: existingRider.image, // Keep existing image by default
+    };
+
+    // Handle image upload if new image is provided
+    if (req.file) {
+      const cloudinaryResult = await uploadToCloudinary(req.file.buffer);
+      updateData.image = {
+        public_id: cloudinaryResult.public_id,
+        url: cloudinaryResult.secure_url,
+      };
+    }
+
+    // Update rider with new data
+    const updatedRider = await Rider.findByIdAndUpdate(
+      req.user.id,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    ).select("-password");
+
+    res.status(200).json({
+      message: "Rider updated successfully",
+      rider: updatedRider,
+    });
   } catch (error) {
+    console.error("Update error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 });
 
-//Update Rider
-router.put("/:id", auth, async (req, res) => {
+router.patch("/update", auth, upload.single("image"), async (req, res) => {
   try {
-    const { id } = req.params;
-    const updates = req.body;
+    const { username, email, mobileNo } = req.body;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: "Invalid rider ID" });
-    }
-
-    const rider = await Rider.findById(id);
-    if (!rider) {
+    // Check if rider exists
+    const existingRider = await Rider.findById(req.user.id);
+    if (!existingRider) {
       return res.status(404).json({ message: "Rider not found" });
     }
 
-    Object.keys(updates).forEach((key) => {
-      rider[key] = updates[key];
+    // Handle image upload if provided
+    const uploadPromises = [];
+    if (req.file) {
+      uploadPromises.push(
+        uploadToCloudinary(req.file.buffer).then((result) => ({
+          field: "image",
+          result,
+        }))
+      );
+    }
+
+    // Wait for image upload to complete
+    const uploadResults = await Promise.all(uploadPromises);
+
+    // Prepare update data with existing fields
+    const updateData = {
+      username: username || existingRider.username,
+      email: email || existingRider.email,
+      mobileNo: mobileNo || existingRider.mobileNo,
+      image: existingRider.image,
+    };
+
+    // Update image data if new image was uploaded
+    uploadResults.forEach(({ field, result }) => {
+      if (field === "image") {
+        updateData.image = {
+          public_id: result.public_id,
+          url: result.secure_url,
+        };
+      }
     });
 
-    await rider.save();
+    // Update rider with new data
+    const updatedRider = await Rider.findByIdAndUpdate(
+      req.user.id,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    ).select("-password");
 
-    res.status(200).json(rider); // Return the updated rider details
+    res.status(200).json({
+      message: "Rider updated successfully",
+      rider: updatedRider,
+    });
   } catch (error) {
+    console.error("Update error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 });

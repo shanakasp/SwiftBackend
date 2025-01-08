@@ -64,7 +64,9 @@ router.put("/:id/password", auth, async (req, res) => {
 // Get own details route
 router.get("/getOwnDetails", auth, async (req, res) => {
   try {
-    const nominateDriver = await NominateDriver.findById(req.user.id);
+    const nominateDriver = await NominateDriver.findById(req.user.id).select(
+      "-password"
+    );
     if (!nominateDriver) {
       return res.status(404).json({ message: "Driver not found" });
     }

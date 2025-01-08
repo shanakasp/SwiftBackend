@@ -2,6 +2,10 @@ const mongoose = require("mongoose");
 
 const applicantSecuritySchema = new mongoose.Schema(
   {
+    email: {
+      type: String,
+      required: true,
+    },
     documents: [
       {
         documentName: {
@@ -30,7 +34,7 @@ const applicantSecuritySchema = new mongoose.Schema(
 // Validate document count matches job requirement
 applicantSecuritySchema.pre("save", async function (next) {
   try {
-    const jobId = this.job; // Make sure we're using the correct field name
+    const jobId = this.job;
     const SecurityJob = await mongoose.model("SecurityJob").findById(jobId);
     if (!SecurityJob) {
       throw new Error("Job not found");
