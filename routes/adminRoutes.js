@@ -207,6 +207,11 @@ router.delete("/user/:id", adminAuth, async (req, res) => {
         deletedUser = await Rider.findById(id);
         if (deletedUser) {
           await Rider.findByIdAndDelete(id);
+        } else {
+          deletedUser = await NominateDriver.findById(id);
+          if (deletedUser) {
+            await NominateDriver.findByIdAndDelete(id);
+          }
         }
       }
     }
