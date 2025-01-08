@@ -4,7 +4,10 @@ const Driver = require("../models/driver");
 const VehicleOwner = require("../models/vehicleOwner");
 const Rider = require("../models/rider");
 const bcrypt = require("bcryptjs");
+const Message = require("../models/message");
+const mongoose = require("mongoose");
 const Admin = require("../models/admin");
+const Vehicle = require("../models/vehicleSchema");
 const Job = require("../models/job");
 const JobApplicant = require("../models/jobApplicants");
 const { uploadToCloudinary } = require("../utils/cloudinary");
@@ -14,7 +17,7 @@ const { generateToken } = require("../utils/jwt");
 const JobApplicantSecurity = require("../models/jobApplicantsSecurity");
 const nodemailer = require("nodemailer");
 const crypto = require("crypto");
-
+const NominateDriver = require("../models/nominatedDriver");
 router.post("/register", async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -29,6 +32,94 @@ router.post("/register", async (req, res) => {
 
     const token = generateToken(admin);
     res.status(201).json({ message: "Admin registered successfully", token });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+router.get("/admins", adminAuth, async (req, res) => {
+  try {
+    const admins = await Admin.find();
+    res.status(200).json(admins);
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+router.put("/admins/:id/password", adminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { oldPassword, newPassword } = req.body;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid admin ID" });
+    }
+    const admin = await Admin.findById(id);
+    if (!admin) {
+      return res.status(404).json({ message: "Admin not found" });
+    }
+    const isMatch = await bcrypt.compare(oldPassword, admin.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Old password is incorrect" });
+    }
+    const salt = await bcrypt.genSalt(10);
+    admin.password = await bcrypt.hash(newPassword, salt);
+    await admin.save();
+    res.status(200).json({ message: "Password updated successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+router.get("/admins/:id", adminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const admin = await Admin.findById(id);
+
+    if (!admin) {
+      return res.status(404).json({ message: "Admin not found" });
+    }
+
+    res.status(200).json(admin);
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+//Admin direct msg to userSelect:
+router.post("/admin/send-message", async (req, res) => {
+  try {
+    const { adminId, receiverId, title, category, message, receiverModel } =
+      req.body;
+
+    let receiver;
+    switch (receiverModel) {
+      case "Driver":
+        receiver = await Driver.findById(receiverId);
+        break;
+      case "Rider":
+        receiver = await Rider.findById(receiverId);
+        break;
+      case "Admin":
+        receiver = await Admin.findById(receiverId);
+        break;
+      default:
+        return res.status(400).json({ message: "Invalid receiver model" });
+    }
+
+    if (!receiver) {
+      return res.status(404).json({ message: "Receiver not found" });
+    }
+
+    const newMessage = new Message({
+      sender: { id: adminId, model: "Admin" },
+      receiver: { id: receiverId, model: receiverModel },
+      title,
+      category,
+      message,
+      isAdminMessage: true,
+    });
+
+    await newMessage.save();
+
+    res.status(201).json({ message: "Message sent successfully", newMessage });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -49,7 +140,7 @@ router.post("/login", async (req, res) => {
     }
 
     const token = generateToken(admin);
-    res.json({ message: "Login successful", token });
+    res.json({ message: "Login successful", token, adminId: admin._id });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -79,14 +170,20 @@ router.get("/user/:id", adminAuth, async (req, res) => {
 });
 
 // Keep existing endpoints for getting all users of each type
-router.get("/users/drivers", adminAuth, async (req, res) => {
-  const drivers = await Driver.find().select("-password");
-  res.json(drivers);
-});
+// router.get("/users/drivers", adminAuth, async (req, res) => {
+//   const drivers = await Driver.find().select("-password");
+//   res.json(drivers);
+// });
 
-router.get("/users/vehicle-owners", adminAuth, async (req, res) => {
-  const owners = await VehicleOwner.find().select("-password");
-  res.json(owners);
+router.get("/users/drivers", adminAuth, async (req, res) => {
+  try {
+    const drivers = await Driver.find()
+      .select("-password")
+      .sort({ drivingLicenseExpireDate: 1 }); // Sort by expire date in descending order
+    res.json(drivers);
+  } catch (error) {
+    res.status(500).send("Server Error");
+  }
 });
 
 router.get("/users/riders", adminAuth, async (req, res) => {
@@ -110,6 +207,11 @@ router.delete("/user/:id", adminAuth, async (req, res) => {
         deletedUser = await Rider.findById(id);
         if (deletedUser) {
           await Rider.findByIdAndDelete(id);
+        } else {
+          deletedUser = await NominateDriver.findById(id);
+          if (deletedUser) {
+            await NominateDriver.findByIdAndDelete(id);
+          }
         }
       }
     }
@@ -383,7 +485,7 @@ router.patch("/verify-driver/:driverId", adminAuth, async (req, res) => {
       subject: "Swift Admin Team: Your Login Credentials",
       html: ` <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;"> <div style="text-align: center;">
       
-      </div> <h1 style="color: #38a169;">Proudly South African</h1> <h2 style="color: #38a169;">Ride-Sharing Platform</h2> <h3 style="color: #d69e2e;">This is company Swift!</h3> <p>Hello <strong>${driver.fullName}</strong>,</p> <p>Your account has been verified by the Swift Admin Team. Please use the following credentials to log in:</p> <div style="border: 1px solid #38a169; padding: 10px; background-color: #f0f8ff;"> <p><strong>Email:</strong> ${credentials.email}</p> <p><strong>Password:</strong> ${credentials.password}</p> </div> <p>Please change your password after the first login.</p> <p>Thank you,</p> <p><strong>Swift Admin Team</strong></p> <div style="text-align: center; color: #38a169;"> <p>South Africa's most innovative e-hailing service.</p> </div> <div style="text-align: center;"> </div> <div style="text-align: center; color: #d69e2e; margin-top: 20px;"> <p>© 2025 Swift! All rights reserved.</p> </div> </div> `,
+      </div> <h1 style="color: #38a169;">Proudly South African</h1> <h2 style="color: #38a169;">Ride-Sharing Platform</h2> <h3 style="color: #d69e2e;">This is company Swift!</h3> <p>Hello <strong>${driver.fullName}</strong>,</p> <p>Your driver account has been verified by the Swift Admin Team. Please use the following credentials to log in:</p> <div style="border: 1px solid #38a169; padding: 10px; background-color: #f0f8ff;"> <p><strong>Email:</strong> ${credentials.email}</p> <p><strong>Password:</strong> ${credentials.password}</p> </div> <p>Please change your password after the first login.</p> <p>Thank you,</p> <p><strong>Swift Admin Team</strong></p> <div style="text-align: center; color: #38a169;"> <p>South Africa's most innovative e-hailing service.</p> </div> <div style="text-align: center;"> </div> <div style="text-align: center; color: #d69e2e; margin-top: 20px;"> <p>© 2025 Swift! All rights reserved.</p> </div> </div> `,
     };
     transporter.sendMail(mailOptions, (error, info) => {
       if (error) {
@@ -561,13 +663,173 @@ router.patch(
   }
 );
 
-router.get("/vehicleOwner/:id", auth, async (req, res) => {
+// Get all vehicles
+router.get("/getAllVehicles", adminAuth, async (req, res) => {
+  try {
+    const vehicles = await Vehicle.find();
+    res.json({
+      success: true,
+      data: vehicles,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+});
+
+// Get vehicle by ID
+router.get("/getVehicle/:id", adminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const vehicle = await Vehicle.findById(id);
+
+    if (!vehicle) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: vehicle,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+});
+
+//Verify vehicle by id
+router.patch("/verify-vehicle/:vehicleId", adminAuth, async (req, res) => {
+  try {
+    const { vehicleId } = req.params;
+    const vehicle = await Vehicle.findById(vehicleId);
+    if (!vehicle) {
+      return res.status(404).json({ message: "Vehicle not found" });
+    }
+    vehicle.adminVerified = true;
+    await vehicle.save();
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: { user: "shanakaprince@gmail.com", pass: "xqlw xhyl vvem zhlk" },
+    });
+    const mailOptions = {
+      from: "Swift Admin Team",
+      to: vehicle.ownerEmail,
+      subject: "Swift Admin Team: Your Vehicle Verification",
+      html: `<div style="font-family: Arial, sans-serif; padding: 20px; color: #333;"> <div style="text-align: center;"></div> <h1 style="color: #38a169;">Proudly South African Ride-Sharing Platform</h1> <h2 style="color: #d69e2e;">Swift!</h2> <p>Hello,</p> <p>Your vehicle has been verified by the Swift Admin Team. Here are the details of your verified vehicle:</p> <div style="border: 1px solid #38a169; padding: 10px; background-color: #f0f8ff;"> <p><strong>Make:</strong> ${vehicle.make}</p> <p><strong>Model:</strong> ${vehicle.model}</p> <p><strong>Year:</strong> ${vehicle.year}</p> <p><strong>Registration:</strong> ${vehicle.registration}</p> <p><strong>Color:</strong> ${vehicle.color}</p> <p><strong>Insurance Details:</strong> ${vehicle.insuranceDetails}</p> </div> <p>Thank you,</p> <p><strong>Swift Admin Team</strong></p> <div style="text-align: center; color: #38a169;"> <p>South Africa's most innovative e-hailing service.</p> </div> <div style="text-align: center;"></div> <div style="text-align: center; color: #d69e2e; margin-top: 20px;"> <p>© 2025 Swift! All rights reserved.</p> </div> </div>`,
+    };
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        console.error("Email error:", error);
+      } else {
+        console.log("Email sent:", info.response);
+      }
+    });
+    res.json({
+      message: "Vehicle verified successfully",
+      vehicle: {
+        id: vehicle._id,
+        make: vehicle.make,
+        model: vehicle.model,
+        ownerEmail: vehicle.ownerEmail,
+        adminVerified: vehicle.adminVerified,
+      },
+    });
+  } catch (error) {
+    console.error("Verification error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+router.get("/nominatedDrivers", adminAuth, async (req, res) => {
+  try {
+    const drivers = await NominateDriver.find();
+    res.status(200).json(drivers);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: "An error occurred while fetching nominated drivers." });
+  }
+});
+
+router.get("/nominatedDriver/:driverId", adminAuth, async (req, res) => {
+  try {
+    const { driverId } = req.params;
+    const driver = await NominateDriver.findById(driverId);
+    if (!driver) {
+      return res.status(404).json({ error: "Nominated driver not found." });
+    }
+    res.status(200).json(driver);
+  } catch (error) {
+    res.status(500).json({
+      error: "An error occurred while fetching the nominated driver.",
+    });
+  }
+});
+
+router.get("/users/vehicle-owners", adminAuth, async (req, res) => {
+  try {
+    const owners = await VehicleOwner.find().select("-password").lean();
+
+    const ownersWithDetails = await Promise.all(
+      owners.map(async (owner) => {
+        const vehicles = await Vehicle.find({ owner: owner._id });
+
+        return {
+          ...owner,
+          vehicles,
+          vehicleCount: vehicles.length,
+
+          documentStatus: {
+            hasDriverLicense: !!owner.driverLicense?.url,
+            hasPRDP: !!owner.prdp?.url,
+            hasPoliceClearance: !!owner.policeClearance?.url,
+            hasProofOfAddress: !!owner.proofOfAddress?.url,
+          },
+          verificationStatus: {
+            isVerified: owner.adminVerified,
+            documentsComplete: true,
+            consentComplete:
+              owner.consentDrivingRecordCheck &&
+              owner.consentEmploymentVerification &&
+              owner.acceptTermsConditions &&
+              owner.consentDataProcessing,
+          },
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      count: owners.length,
+      owners: ownersWithDetails,
+    });
+  } catch (error) {
+    console.error("Error fetching vehicle owners:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching vehicle owners",
+      error: error.message,
+    });
+  }
+});
+
+router.get("/vehicleOwner/:id", adminAuth, async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Find driver with all details except password
+    // Find vehicle owner and populate vehicles and nominated drivers
     const vehicleOwner = await VehicleOwner.findById(id)
       .select("-password")
+      .populate("vehicles")
+      .populate("nominatedDrivers")
       .lean();
 
     if (!vehicleOwner) {
@@ -577,9 +839,16 @@ router.get("/vehicleOwner/:id", auth, async (req, res) => {
       });
     }
 
-    // Add additional metadata for admin view
+    // Get all vehicles for this owner
+    const vehicles = await Vehicle.find({ owner: id });
+
+    // Get all nominated drivers for this owner
+    const nominatedDrivers = await NominateDriver.find({ nominatedBy: id });
+
     const vehicleOwnerWithMetaData = {
       ...vehicleOwner,
+      vehicles, // Add vehicles array
+      nominatedDrivers, // Add nominated drivers array
       documentStatus: {
         hasDriverLicense: !!vehicleOwner.driverLicense?.url,
         hasPRDP: !!vehicleOwner.prdp?.url,
@@ -593,20 +862,19 @@ router.get("/vehicleOwner/:id", auth, async (req, res) => {
       },
       verificationStatus: {
         isVerified: vehicleOwner.adminVerified,
-        documentsComplete: true, // This will be updated below
-        consentComplete:
-          vehicleOwner.consentDrivingRecordCheck &&
-          vehicleOwner.consentEmploymentVerification &&
-          vehicleOwner.acceptTermsConditions &&
-          vehicleOwner.consentDataProcessing,
+        // documentsComplete: true,
+        // consentComplete:
+        //   vehicleOwner.consentDrivingRecordCheck &&
+        //   vehicleOwner.consentEmploymentVerification &&
+        //   vehicleOwner.acceptTermsConditions &&
+        //   vehicleOwner.consentDataProcessing,
       },
     };
 
-    // Check if all required documents are uploaded
-    vehicleOwnerWithMetaData.verificationStatus.documentsComplete =
-      Object.values(vehicleOwnerWithMetaData.documentStatus).every(
-        (status) => status
-      );
+    // vehicleOwnerWithMetaData.verificationStatus.documentsComplete =
+    //   Object.values(vehicleOwnerWithMetaData.documentStatus).every(
+    //     (status) => status
+    //   );
 
     res.status(200).json({
       success: true,
@@ -640,7 +908,7 @@ router.get("/unverified-vehicleOwner", adminAuth, async (req, res) => {
 
     res.json({
       count: unVerifiedVehicleOwner.length,
-      drivers: unVerifiedVehicleOwner,
+      vehicleOwners: unVerifiedVehicleOwner,
     });
   } catch (error) {
     console.error("Fetch error:", error);
@@ -650,5 +918,137 @@ router.get("/unverified-vehicleOwner", adminAuth, async (req, res) => {
     });
   }
 });
+
+//Driver license expiry date change
+router.patch("/drivers/:id/license-expiry", adminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { drivingLicenseExpireDate } = req.body;
+    const updatedDriver = await Driver.findByIdAndUpdate(
+      id,
+      { drivingLicenseExpireDate },
+      { new: true }
+    );
+    if (!updatedDriver) {
+      return res.status(404).json({ message: "Driver not found" });
+    }
+    res.status(200).json({
+      message: "Driving license expiry date updated successfully",
+      driver: updatedDriver,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+//Driver license expiry date change
+router.patch("/drivers/:id/license-expiry-ND", adminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { drivingLicenseExpireDate } = req.body;
+    const updatedDriver = await NominateDriver.findByIdAndUpdate(
+      id,
+      { drivingLicenseExpireDate },
+      { new: true }
+    );
+    if (!updatedDriver) {
+      return res.status(404).json({ message: "Driver not found" });
+    }
+    res.status(200).json({
+      message: "Driving license expiry date updated successfully",
+      driver: updatedDriver,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+router.get("/nominatedDrivers", adminAuth, async (req, res) => {
+  try {
+    const drivers = await NominateDriver.find();
+    res.status(200).json(drivers);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: "An error occurred while fetching nominated drivers." });
+  }
+});
+
+router.get("/nominatedDriver/:driverId", adminAuth, async (req, res) => {
+  try {
+    const { driverId } = req.params;
+    const driver = await NominateDriver.findById(driverId);
+    if (!driver) {
+      return res.status(404).json({ error: "Nominated driver not found." });
+    }
+    res.status(200).json(driver);
+  } catch (error) {
+    res.status(500).json({
+      error: "An error occurred while fetching the nominated driver.",
+    });
+  }
+});
+
+router.patch(
+  "/verify-nominatedDriver/:driverId",
+  adminAuth,
+  async (req, res) => {
+    try {
+      const { driverId } = req.params;
+      const driver = await NominateDriver.findById(driverId);
+      if (!driver) {
+        return res.status(404).json({ message: "Driver not found" });
+      }
+      driver.adminVerified = true;
+      const generateRandomPassword = () => {
+        return crypto.randomBytes(8).toString("hex");
+      };
+      const randomPassword = generateRandomPassword();
+      if (!driver.password) {
+        const hashedPassword = await bcrypt.hash(randomPassword, 12);
+        driver.password = hashedPassword;
+      }
+      await driver.save();
+      const credentials = {
+        email: driver.email,
+        password: randomPassword,
+        fullName: driver.fullName,
+      };
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: { user: "shanakaprince@gmail.com", pass: "xqlw xhyl vvem zhlk" },
+      });
+      const mailOptions = {
+        from: "Swift Admin Team",
+        to: driver.email,
+        subject: "Swift Admin Team: Your Login Credentials",
+        html: `<div style="font-family: Arial, sans-serif; padding: 20px; color: #333;"> <div style="text-align: center;"></div> <h1 style="color: #38a169;">Proudly South African Ride-Sharing Platform</h1> <h2 style="color: #d69e2e;">Swift!</h2> <p>Hello <strong>${driver.fullName}</strong>,</p> <p>Your driver account has been verified by the Swift Admin Team. Please use the following credentials to log in:</p> <div style="border: 1px solid #38a169; padding: 10px; background-color: #f0f8ff;"> <p><strong>Email:</strong> ${credentials.email}</p> <p><strong>Password:</strong> ${credentials.password}</p> </div> <p>Please change your password after the first login.</p> <p>Thank you,</p> <p><strong>Swift Admin Team</strong></p> <div style="text-align: center; color: #38a169;"> <p>South Africa's most innovative e-hailing service.</p> </div> <div style="text-align: center;"></div> <div style="text-align: center; color: #d69e2e; margin-top: 20px;"> <p>© 2025 Swift! All rights reserved.</p> </div> </div>`,
+      };
+      transporter.sendMail(mailOptions, (error, info) => {
+        if (error) {
+          console.error("Email error:", error);
+        } else {
+          console.log("Email sent:", info.response);
+        }
+      });
+      res.json({
+        message: "Driver verified successfully",
+        driver: {
+          id: driver._id,
+          fullName: driver.fullName,
+          email: driver.email,
+          adminVerified: driver.adminVerified,
+        },
+        credentials: {
+          message: `Please send the following credentials to ${driver.fullName}:`,
+          loginDetails: `Email: ${credentials.email}\nPassword: ${credentials.password}\n\nPlease change your password after the first login.`,
+        },
+      });
+    } catch (error) {
+      console.error("Verification error:", error);
+      res.status(500).json({ message: "Server error", error: error.message });
+    }
+  }
+);
 
 module.exports = router;

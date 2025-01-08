@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 
-const driverSchema = new mongoose.Schema(
+const nominateDriverSchema = new mongoose.Schema(
   {
     fullName: {
       type: String,
@@ -18,6 +18,9 @@ const driverSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
+    },
+    vehicleIds: {
+      type: String,
     },
     phone: {
       type: String,
@@ -43,47 +46,9 @@ const driverSchema = new mongoose.Schema(
       public_id: String,
       url: String,
     },
-    vehicle: {
-      make: String,
-      model: String,
-      year: Number,
-      registration: String,
-      color: String,
-      insuranceDetails: String,
-      registrationPapers: {
-        public_id: String,
-        url: String,
-      },
-      insuranceCertificate: {
-        public_id: String,
-        url: String,
-      },
-      roadworthyCertificate: {
-        public_id: String,
-        url: String,
-      },
-    },
-    criminalRecordCheck: {
-      type: Boolean,
-      required: true,
-    },
-    consentDrivingRecordCheck: {
-      type: Boolean,
-      required: true,
-    },
-    consentEmploymentVerification: {
-      type: Boolean,
-      required: true,
-    },
-    acceptTermsConditions: {
-      type: Boolean,
-      required: true,
-    },
+
     drivingLicenseExpireDate: { type: String, default: "No date added" },
-    consentDataProcessing: {
-      type: Boolean,
-      default: false,
-    },
+
     adminVerified: {
       type: Boolean,
       default: false,
@@ -91,8 +56,20 @@ const driverSchema = new mongoose.Schema(
     password: {
       type: String,
     },
+
+    vehicleIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Vehicle",
+      },
+    ],
+    nominatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "VehicleOwner",
+      required: true,
+    },
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Driver", driverSchema);
+module.exports = mongoose.model("NominateDriver", nominateDriverSchema);
