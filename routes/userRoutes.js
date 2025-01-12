@@ -6,7 +6,8 @@ const SecurityJob = require("../models/securityJob");
 const JobApplicantSecurity = require("../models/jobApplicantsSecurity");
 const Job = require("../models/job");
 const JobApplicant = require("../models/jobApplicants");
-const nodemailer = require("nodemailer");
+const emailService = require("../utils/emailService");
+
 //Apply job
 router.post(
   "/jobs/:jobId/apply",
@@ -38,34 +39,8 @@ router.post(
       job.applicants.push(applicant._id);
       await job.save();
 
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: { user: "shanakaprince@gmail.com", pass: "xqlw xhyl vvem zhlk" },
-      });
-      const mailOptions = {
-        from: "Swift Admin Team",
-        to: email,
-        subject: "Swift: Job Application Received",
-        html: `
-          <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-            <h1 style="color: #38a169;">Thank You for Applying!</h1>
-            <p>Dear Applicant,</p>
-            <p>We have received your application for the position at Swift.</p>
-           
-            <p>We will review your application and get back to you soon.</p>
-            <p>Best regards,</p>
-            <p><strong>Swift HR Team</strong></p>  <div style="text-align: center; color: #38a169;"> <p>South Africa's most innovative e-hailing service.</p> </div> <div style="text-align: center;"> </div> <div style="text-align: center; color: #d69e2e; margin-top: 20px;"> <p>© 2025 Swift! All rights reserved.</p> </div> </div> 
-          </div>
-        `,
-      };
-
-      transporter.sendMail(mailOptions, (error, info) => {
-        if (error) {
-          console.error("Email error:", error);
-        } else {
-          console.log("Email sent:", info.response);
-        }
-      });
+      // Send email using the email service
+      await emailService.sendJobApplicationEmail(email);
 
       res
         .status(201)
@@ -85,24 +60,20 @@ router.post(
       const { email, documentNames } = req.body;
       const files = req.files;
 
-      // Validate email is provided
       if (!email) {
         return res.status(400).json({ message: "Email is required" });
       }
 
-      // Log jobId and files received
       console.log("Job ID:", jobId);
       console.log("Files:", files);
       console.log("Document Names:", documentNames);
       console.log("Email:", email);
 
-      // Validate job exists
       const job = await SecurityJob.findById(jobId);
       if (!job) {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      // Validate number of documents matches the requirement
       console.log("Job requiredDocumentCount:", job.requiredDocumentCount);
       if (files.length !== job.requiredDocumentCount) {
         return res.status(400).json({
@@ -110,7 +81,6 @@ router.post(
         });
       }
 
-      // Validate document names match required documents
       const requiredDocNames = job.requiredDocuments.map(
         (doc) => doc.documentName
       );
@@ -121,7 +91,6 @@ router.post(
         });
       }
 
-      // Upload all files to Cloudinary
       const uploadPromises = files.map(async (file, index) => {
         const result = await uploadToCloudinary(file.buffer);
         return {
@@ -133,54 +102,19 @@ router.post(
 
       const uploadedDocuments = await Promise.all(uploadPromises);
 
-      // Create job application with email
       const jobApplication = new JobApplicantSecurity({
         email,
         documents: uploadedDocuments,
         job: jobId,
       });
 
-      // Save application
       await jobApplication.save();
 
-      // Update job's applicants array
       job.applicants.push(jobApplication._id);
       await job.save();
 
-      // Send confirmation email
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: "shanakaprince@gmail.com",
-          pass: "xqlw xhyl vvem zhlk",
-        },
-      });
-
-      const mailOptions = {
-        from: "Swift Admin Team",
-        to: email,
-        subject: "Swift: Job Application Received",
-        html: `
-          <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-            <h1 style="color: #38a169;">Thank You for Applying!</h1>
-            <p>Dear Applicant,</p>
-            <p>We have received your application for the position at Swift.</p>
-            <p>We will review your application and get back to you soon.</p>
-            <p>Best regards,</p>
-            <p><strong>Swift HR Team</strong></p>
-            <div style="text-align: center; color: #38a169;">
-              <p>South Africa's most innovative e-hailing service.</p>
-            </div>
-            <div style="text-align: center;">
-            </div>
-            <div style="text-align: center; color: #d69e2e; margin-top: 20px;">
-              <p>© 2025 Swift! All rights reserved.</p>
-            </div>
-          </div>
-        `,
-      };
-      // Send email
-      await transporter.sendMail(mailOptions);
+      // Send email using the email service
+      await emailService.sendJobApplicationEmail(email);
 
       res.status(201).json({
         message: "Application submitted successfully",
@@ -195,4 +129,5 @@ router.post(
     }
   }
 );
+
 module.exports = router;
