@@ -22,6 +22,7 @@ const uploadFields = upload.fields([
 
 router.post("/register", uploadFields, async (req, res) => {
   try {
+    // Destructure and validate required fields
     const {
       fullName,
       idPassportNumber,
@@ -36,12 +37,28 @@ router.post("/register", uploadFields, async (req, res) => {
       acceptTermsConditions,
       consentDataProcessing,
       vehicleIds,
+      make,
+      model,
+      year,
+      registration,
+      color,
+      insuranceDetails,
     } = req.body;
 
-    const vehicleIdArray = vehicleIds
-      .split(",")
-      .map((id) => mongoose.Types.ObjectId(id.trim()));
+    // Validate required fields
+    if (!fullName || !email || !phone) {
+      return res.status(400).json({
+        message: "Missing required fields",
+        required: "fullName, email, and phone are required",
+      });
+    }
 
+    // Create vehicleIds array safely
+    const vehicleIdArray = vehicleIds
+      ? vehicleIds.split(",").map((id) => mongoose.Types.ObjectId(id.trim()))
+      : [];
+
+    // Check for existing owner
     const existingOwner = await VehicleOwner.findOne({ email });
     if (existingOwner) {
       return res
@@ -49,9 +66,11 @@ router.post("/register", uploadFields, async (req, res) => {
         .json({ message: "Vehicle owner with this email already exists" });
     }
 
+    // Process file uploads
     const uploadPromises = [];
-    const files = req.files;
+    const files = req.files || {};
 
+    // Process owner documents
     const ownerDocs = {
       driverLicense: files.driverLicense?.[0],
       prdp: files.prdp?.[0],
@@ -60,12 +79,14 @@ router.post("/register", uploadFields, async (req, res) => {
       proofOfAddress: files.proofOfAddress?.[0],
     };
 
+    // Process vehicle documents
     const vehicleDocs = {
       registrationPapers: files.registrationPapers?.[0],
       insuranceCertificate: files.insuranceCertificate?.[0],
       roadworthyCertificate: files.roadworthyCertificate?.[0],
     };
 
+    // Upload owner documents to Cloudinary
     for (const [key, file] of Object.entries(ownerDocs)) {
       if (file) {
         uploadPromises.push(
@@ -77,6 +98,7 @@ router.post("/register", uploadFields, async (req, res) => {
       }
     }
 
+    // Upload vehicle documents to Cloudinary
     for (const [key, file] of Object.entries(vehicleDocs)) {
       if (file) {
         uploadPromises.push(
@@ -89,33 +111,38 @@ router.post("/register", uploadFields, async (req, res) => {
       }
     }
 
+    // Wait for all uploads to complete
     const uploadResults = await Promise.all(uploadPromises);
 
+    // Prepare owner data
     const ownerData = {
       fullName,
       idPassportNumber,
-      dateOfBirth: new Date(dateOfBirth),
+      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
       email,
       phone,
       address,
+      proofOfAddress,
       criminalRecordCheck: criminalRecordCheck === "true",
       consentDrivingRecordCheck: consentDrivingRecordCheck === "true",
       consentEmploymentVerification: consentEmploymentVerification === "true",
       acceptTermsConditions: acceptTermsConditions === "true",
       consentDataProcessing: consentDataProcessing === "true",
       vehicle: {
-        make: req.body.make,
-        model: req.body.model,
-        year: parseInt(req.body.year),
-        registration: req.body.registration,
-        color: req.body.color,
-        insuranceDetails: req.body.insuranceDetails,
+        make,
+        model,
+        year: year ? parseInt(year) : undefined,
+        registration,
+        color,
+        insuranceDetails,
       },
       vehicleIds: vehicleIdArray,
     };
 
+    // Add uploaded document URLs to owner data
     uploadResults.forEach(({ field, result, isVehicle }) => {
       if (isVehicle) {
+        if (!ownerData.vehicle) ownerData.vehicle = {};
         ownerData.vehicle[field] = {
           public_id: result.public_id,
           url: result.secure_url,
@@ -128,10 +155,14 @@ router.post("/register", uploadFields, async (req, res) => {
       }
     });
 
+    // Create and save new vehicle owner
     const owner = new VehicleOwner(ownerData);
     await owner.save();
 
+    // Generate authentication token
     const token = generateToken(owner);
+
+    // Send success response
     res.status(201).json({
       message: "Vehicle Owner registered successfully",
       token,
@@ -149,7 +180,6 @@ router.post("/register", uploadFields, async (req, res) => {
     });
   }
 });
-
 router.put("/register", auth, uploadFields, async (req, res) => {
   try {
     const {
