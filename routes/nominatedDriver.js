@@ -7,8 +7,19 @@ const { generateToken } = require("../utils/jwt");
 const auth = require("../middleware/auth");
 const adminAuth = require("../middleware/adminAuth");
 const mongoose = require("mongoose");
-
+const multer = require("multer");
 const router = express.Router();
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
+const { uploadToCloudinary } = require("../utils/cloudinary");
+
+const uploadFields = upload.fields([
+  { name: "driverLicense", maxCount: 1 },
+  { name: "prdp", maxCount: 1 },
+  { name: "imageID", maxCount: 1 },
+  { name: "policeClearance", maxCount: 1 },
+  { name: "proofOfAddress", maxCount: 1 },
+]);
 
 // Login route for nominated drivers
 router.post("/login", async (req, res) => {
@@ -219,4 +230,76 @@ router.patch("/update-expire-date", auth, async (req, res) => {
   }
 });
 
+router.patch("/updateDetails", auth, uploadFields, async (req, res) => {
+  try {
+    const {
+      fullName,
+      idPassportNumber,
+      dateOfBirth,
+      email,
+      proofOfAddress,
+      phone,
+      address,
+      driverLicense,
+      drivingLicenseExpireDate,
+      prdp,
+      policeClearance,
+      criminalRecordCheck,
+      consentDrivingRecordCheck,
+      consentEmploymentVerification,
+      acceptTermsConditions,
+      consentDataProcessing,
+    } = req.body;
+    const existingDriver = await NominateDriver.findById(req.user.id);
+    if (!existingDriver) {
+      return res.status(404).json({ message: "Driver not found" });
+    }
+    const uploadPromises = [];
+    const files = req.files;
+    const driverDocs = {
+      driverLicense: files.driverLicense?.[0],
+      prdp: files.prdp?.[0],
+      policeClearance: files.policeClearance?.[0],
+      proofOfAddress: files.proofOfAddress?.[0],
+    };
+    for (const [key, file] of Object.entries(driverDocs)) {
+      if (file) {
+        uploadPromises.push(
+          uploadToCloudinary(file.buffer).then((result) => ({
+            field: key,
+            result,
+          }))
+        );
+      }
+    }
+    const uploadResults = await Promise.all(uploadPromises);
+    const updateData = {
+      fullName,
+      idPassportNumber,
+      dateOfBirth: dateOfBirth
+        ? new Date(dateOfBirth)
+        : existingDriver.dateOfBirth,
+      email,
+      phone,
+      address,
+      drivingLicenseExpireDate,
+      criminalRecordCheck: criminalRecordCheck === "true",
+      consentDrivingRecordCheck: consentDrivingRecordCheck === "true",
+      consentEmploymentVerification: consentEmploymentVerification === "true",
+      acceptTermsConditions: acceptTermsConditions === "true",
+      consentDataProcessing: consentDataProcessing === "true",
+    };
+    uploadResults.forEach(({ field, result }) => {
+      updateData[field] = {
+        public_id: result.public_id,
+        url: result.secure_url,
+      };
+    });
+    await NominateDriver.findByIdAndUpdate(req.user.id, { $set: updateData });
+    res.status(200).json({ message: "NominateDriver updated successfully" });
+  } catch (error) {
+    console.error("Update error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
 module.exports = router;

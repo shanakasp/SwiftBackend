@@ -18,6 +18,7 @@ const JobApplicantSecurity = require("../models/jobApplicantsSecurity");
 const nodemailer = require("nodemailer");
 const crypto = require("crypto");
 const NominateDriver = require("../models/nominatedDriver");
+const emailConfig = require("../utils/emailConfig");
 router.post("/register", async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -475,10 +476,7 @@ router.patch("/verify-driver/:driverId", adminAuth, async (req, res) => {
       password: randomPassword,
       fullName: driver.fullName,
     };
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: { user: "shanakaprince@gmail.com", pass: "xqlw xhyl vvem zhlk" },
-    });
+    const transporter = nodemailer.createTransport(emailConfig);
     const mailOptions = {
       from: "Swift Admin Team",
       to: driver.email,
@@ -624,10 +622,7 @@ router.patch(
         password: randomPassword,
         fullName: vehicleOwner.fullName,
       };
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: { user: "shanakaprince@gmail.com", pass: "xqlw xhyl vvem zhlk" },
-      });
+      const transporter = nodemailer.createTransport(emailConfig);
       const mailOptions = {
         from: "Swift Admin Team",
         to: vehicleOwner.email,
@@ -716,10 +711,7 @@ router.patch("/verify-vehicle/:vehicleId", adminAuth, async (req, res) => {
     }
     vehicle.adminVerified = true;
     await vehicle.save();
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: { user: "shanakaprince@gmail.com", pass: "xqlw xhyl vvem zhlk" },
-    });
+    const transporter = nodemailer.createTransport(emailConfig);
     const mailOptions = {
       from: "Swift Admin Team",
       to: vehicle.ownerEmail,
@@ -1014,10 +1006,7 @@ router.patch(
         password: randomPassword,
         fullName: driver.fullName,
       };
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: { user: "shanakaprince@gmail.com", pass: "xqlw xhyl vvem zhlk" },
-      });
+      const transporter = nodemailer.createTransport(emailConfig);
       const mailOptions = {
         from: "Swift Admin Team",
         to: driver.email,
