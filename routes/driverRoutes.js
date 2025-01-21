@@ -404,7 +404,11 @@ router.post("/login", async (req, res) => {
     }
 
     const token = generateToken(driver);
-    res.json({ message: "Login successful", token });
+    res.json({
+      message: "Login successful",
+      token,
+      driverID: driver._id,
+    });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }

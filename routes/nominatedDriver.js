@@ -40,7 +40,7 @@ router.post("/login", async (req, res) => {
     res.json({
       message: "Login successful",
       token,
-      driverId: nominateDriver._id,
+      NominatedDriverID: nominateDriver._id,
     });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
