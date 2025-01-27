@@ -1,4 +1,5 @@
 const router = require("express").Router();
+const { authf, createUserWithEmailAndPassword } = require("../firebaseConfig");
 const adminAuth = require("../middleware/adminAuth");
 const Driver = require("../models/driver");
 const VehicleOwner = require("../models/vehicleOwner");
@@ -141,7 +142,7 @@ router.post("/login", async (req, res) => {
     }
 
     const token = generateToken(admin);
-    res.json({ message: "Login successful", token, adminId: admin._id });
+    res.json({ message: "Login successful", token, adminID: admin._id });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -461,30 +462,59 @@ router.patch("/verify-driver/:driverId", adminAuth, async (req, res) => {
     if (!driver) {
       return res.status(404).json({ message: "Driver not found" });
     }
+
     driver.adminVerified = true;
+
     const generateRandomPassword = () => {
       return crypto.randomBytes(8).toString("hex");
     };
+
     const randomPassword = generateRandomPassword();
+
     if (!driver.password) {
       const hashedPassword = await bcrypt.hash(randomPassword, 12);
       driver.password = hashedPassword;
     }
+
     await driver.save();
+
     const credentials = {
       email: driver.email,
       password: randomPassword,
       fullName: driver.fullName,
     };
+
+    // Create Firebase user
+    try {
+      const userCredential = await createUserWithEmailAndPassword(
+        authf,
+        credentials.email,
+        credentials.password
+      );
+
+      // Optional: Set additional user metadata in Firebase
+      await userCredential.user.updateProfile({
+        displayName: credentials.fullName,
+      });
+    } catch (firebaseError) {
+      console.error("Firebase user creation error:", firebaseError);
+      // Optionally, you might want to handle different Firebase error scenarios
+      if (firebaseError.code === "auth/email-already-in-use") {
+        console.log(
+          `User with email ${credentials.email} already exists in Firebase`
+        );
+      }
+    }
+
     const transporter = nodemailer.createTransport(emailConfig);
+
     const mailOptions = {
       from: "Swift Admin Team",
       to: driver.email,
       subject: "Swift Admin Team: Your Login Credentials",
-      html: ` <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;"> <div style="text-align: center;">
-      
-      </div> <h1 style="color: #38a169;">Proudly South African</h1> <h2 style="color: #38a169;">Ride-Sharing Platform</h2> <h3 style="color: #d69e2e;">This is company Swift!</h3> <p>Hello <strong>${driver.fullName}</strong>,</p> <p>Your driver account has been verified by the Swift Admin Team. Please use the following credentials to log in:</p> <div style="border: 1px solid #38a169; padding: 10px; background-color: #f0f8ff;"> <p><strong>Email:</strong> ${credentials.email}</p> <p><strong>Password:</strong> ${credentials.password}</p> </div> <p>Please change your password after the first login.</p> <p>Thank you,</p> <p><strong>Swift Admin Team</strong></p> <div style="text-align: center; color: #38a169;"> <p>South Africa's most innovative e-hailing service.</p> </div> <div style="text-align: center;"> </div> <div style="text-align: center; color: #d69e2e; margin-top: 20px;"> <p>© 2025 Swift! All rights reserved.</p> </div> </div> `,
+      html: ` <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;"> <div style="text-align: center;">              </div> <h1 style="color: #38a169;">Proudly South African</h1> <h2 style="color: #38a169;">Ride-Sharing Platform</h2> <h3 style="color: #d69e2e;">This is company Swift!</h3> <p>Hello <strong>${driver.fullName}</strong>,</p> <p>Your driver account has been verified by the Swift Admin Team. Please use the following credentials to log in:</p> <div style="border: 1px solid #38a169; padding: 10px; background-color: #f0f8ff;"> <p><strong>Email:</strong> ${credentials.email}</p> <p><strong>Password:</strong> ${credentials.password}</p> </div> <p>Please change your password after the first login.</p> <p>Thank you,</p> <p><strong>Swift Admin Team</strong></p> <div style="text-align: center; color: #38a169;"> <p>South Africa's most innovative e-hailing service.</p> </div> <div style="text-align: center;"> </div> <div style="text-align: center; color: #d69e2e; margin-top: 20px;"> <p>© 2025 Swift! All rights reserved.</p> </div> </div> `,
     };
+
     transporter.sendMail(mailOptions, (error, info) => {
       if (error) {
         console.error("Email error:", error);
@@ -492,6 +522,7 @@ router.patch("/verify-driver/:driverId", adminAuth, async (req, res) => {
         console.log("Email sent:", info.response);
       }
     });
+
     res.json({
       message: "Driver verified successfully",
       driver: {

@@ -408,7 +408,7 @@ router.post("/login", async (req, res) => {
     res.json({
       message: "Login successful",
       token,
-      id: owner._id, // Add the owner's ID to the response
+      vehicleOwnerID: owner._id, // Add the owner's ID to the response
     });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
